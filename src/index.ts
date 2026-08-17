@@ -1,3 +1,6 @@
 #!/usr/bin/env bun
 
-console.log("ado-stack");
+import { run } from "./cli/run.ts";
+
+const code = await run(process.argv.slice(2));
+process.exit(code);
