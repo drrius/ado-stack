@@ -29,6 +29,10 @@ describe("CLI flags", () => {
     const pat = await runCli(["auth", "login", "--pat", "secret"], { cwd: process.cwd() });
     expect(pat.exitCode).toBe(2);
     expect(pat.stderr).toContain("Unknown option `--pat`");
+
+    const wrongCommand = await runCli(["status", "--continue"], { cwd: process.cwd() });
+    expect(wrongCommand.exitCode).toBe(2);
+    expect(wrongCommand.stderr).toContain("Unknown option `--continue`");
   });
 
   test("config get exits 1 when a key is unset", async () => {
