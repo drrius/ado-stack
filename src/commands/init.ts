@@ -1,8 +1,9 @@
 import type { AdoClient } from "../ado/client.ts";
+import { AdoError } from "../ado/errors.ts";
 import { decodeStackProperties } from "../ado/properties.ts";
 import { parseAzureDevOpsRemote } from "../ado/remote.ts";
 import type { AdoPullRequest } from "../ado/types.ts";
-import { CliError } from "../errors/cli-error.ts";
+import { CliError, isCliError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
 import type { StackState } from "../state/schema.ts";
 import { logNext } from "../ui/next.ts";
@@ -65,6 +66,7 @@ export async function initCommand(
 
   let adoMetadataLoaded = false;
   let adoMetadataError: string | undefined;
+  let adoMetadataCause: unknown;
   try {
     const ado = await createAdoClient(ctx, state);
     const repo = await ado.getRepository();
@@ -81,6 +83,7 @@ export async function initCommand(
       ctx.log.success("Rebuilt stack state from Azure DevOps pull request metadata.");
     }
   } catch (error) {
+    adoMetadataCause = error;
     adoMetadataError = error instanceof Error ? error.message : String(error);
   }
 
@@ -92,13 +95,42 @@ export async function initCommand(
     ctx.log.info(`Initialized ado-stack for ${repositoryLabel} (${stackDetails}).`);
     return;
   }
+  const next = nextStepForInitFailure(adoMetadataCause);
   ctx.log.info(
     `Wrote local ado-stack state for ${repositoryLabel} (${stackDetails}; Azure DevOps not connected).`,
   );
   ctx.log.warn(
-    `Azure DevOps metadata was not loaded: ${adoMetadataError ?? "Azure DevOps is unavailable"}. Run \`ado-stack init\` again after login.`,
+    `Azure DevOps metadata was not loaded: ${adoMetadataError ?? "Azure DevOps is unavailable"}.`,
   );
-  logNext(ctx.log, "ado-stack auth login");
+  logNext(ctx.log, next);
+}
+
+function nextStepForInitFailure(error: unknown): string {
+  if (error instanceof AdoError) {
+    switch (error.kind) {
+      case "unauthenticated":
+      case "expired":
+        return "ado-stack auth login";
+      case "forbidden":
+        return "ado-stack auth login";
+      case "not-found":
+        return "ado-stack config list";
+      case "bad-request":
+      case "conflict":
+      case "rate-limited":
+      case "server":
+      case "unknown":
+        return "ado-stack init";
+      default: {
+        const _exhaustive: never = error.kind;
+        return String(_exhaustive);
+      }
+    }
+  }
+  if (isCliError(error) && error.message.includes("No Azure DevOps credentials were found")) {
+    return "ado-stack auth login";
+  }
+  return "ado-stack init";
 }
 
 export async function reconstructFromAdo(

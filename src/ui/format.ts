@@ -6,7 +6,9 @@ export function formatBranch(branch: string, prefix: string): string {
 }
 
 export function pullRequestWebUrl(state: StackState, id: number): string {
-  return `${trimSlash(state.organization)}/${state.project}/_git/${state.repository}/pullrequest/${id}`;
+  const project = encodeURIComponent(state.project);
+  const repository = encodeURIComponent(state.repository);
+  return `${trimSlash(state.organization)}/${project}/_git/${repository}/pullrequest/${id}`;
 }
 
 export function formatStackPrChain(ids: number[]): string {

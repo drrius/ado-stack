@@ -12,7 +12,6 @@ export type PrState = "open" | "approved" | "rejected" | "completed" | "abandone
 export type PrDisplay =
   | { kind: "none" }
   | { kind: "unknown"; id: number }
-  | { kind: "missing"; id: number }
   | { kind: "loaded"; id: number; title: string; url: string; state: PrState };
 
 export type StatusRow = {
@@ -178,7 +177,6 @@ function renderStatus(ctx: AppContext, status: StackStatus): void {
 export function prStatusLabel(pr: PrDisplay): string {
   switch (pr.kind) {
     case "none":
-    case "missing":
       return "LOCAL";
     case "unknown":
       return "UNKNOWN";
@@ -253,9 +251,7 @@ function buildRow(options: {
       }
     : record.pullRequestId === undefined
       ? { kind: "none" }
-      : options.adoReady
-        ? { kind: "missing", id: record.pullRequestId }
-        : { kind: "unknown", id: record.pullRequestId };
+      : { kind: "unknown", id: record.pullRequestId };
   const resolved = effectiveParent({
     state: options.state,
     branch: options.branch,

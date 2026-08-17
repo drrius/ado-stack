@@ -58,7 +58,6 @@ function statusLabel(pr: PrDisplay): string {
   const label = prStatusLabel(pr);
   switch (pr.kind) {
     case "none":
-    case "missing":
       return pc.dim(label);
     case "unknown":
       return pc.yellow(label);
