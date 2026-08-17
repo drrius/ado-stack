@@ -1,0 +1,19 @@
+{
+  "name": "ado-stack",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "description": "Graphite-style stacked pull requests for Azure DevOps",
+  "type": "module",
+  "bin": {
+    "ado-stack": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}
