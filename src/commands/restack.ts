@@ -270,8 +270,11 @@ async function loadSnapshots(
         sourceBranch: fromRefsHeads(pr.sourceRefName),
         targetBranch: fromRefsHeads(pr.targetRefName),
       });
-    } catch {
-      ctx.log.debug(`Could not load PR #${id} during restack planning`);
+    } catch (error) {
+      throw new CliError(
+        `Could not load PR #${id} from Azure DevOps.\n\nRestack requires complete pull request state to handle merged parents safely.`,
+        { cause: error },
+      );
     }
   }
   return snapshots;

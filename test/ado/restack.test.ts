@@ -82,6 +82,14 @@ describe("restack against fake Azure DevOps", () => {
       );
       expect(unauthenticated.stdout).not.toContain("already up to date");
 
+      const rejectedCredentials = await runCli(["restack"], {
+        cwd: repo.dir,
+        env: { ADO_STACK_PAT: "wrong" },
+      });
+      expect(rejectedCredentials.exitCode).toBe(1);
+      expect(rejectedCredentials.stderr).toContain("Could not load PR");
+      expect(rejectedCredentials.stdout).not.toContain("already up to date");
+
       const restack = await runCli(["restack"], { cwd: repo.dir, env });
       expect(restack.exitCode).toBe(0);
       expect(restack.stdout).toContain(`${apiPr.pullRequestId}`);
