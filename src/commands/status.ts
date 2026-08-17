@@ -86,11 +86,12 @@ export async function statusCommand(ctx: AppContext): Promise<void> {
       ctx.log.info(`  ${issue}`);
     }
   }
-  if (order.length === 0) {
-    ctx.log.info("");
+  ctx.log.info("");
+  if (access.status === "unavailable" && access.reason === "unauthenticated") {
+    logNext(ctx.log, "ado-stack auth login");
+  } else if (order.length === 0) {
     logNext(ctx.log, "ado-stack create <name>");
   } else if (rows.some((row) => row.needsRestack)) {
-    ctx.log.info("");
     logNext(ctx.log, "ado-stack restack");
   }
 }
