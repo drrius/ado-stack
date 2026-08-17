@@ -78,4 +78,23 @@ describe("renderStackLines", () => {
     const output = plain({ ...base, issues: ["PR #9 for feat-a could not be loaded."] });
     expect(output).toContain("note: PR #9 for feat-a could not be loaded.");
   });
+
+  test("local-only rows coach submit instead of claiming sync", () => {
+    const output = plain({
+      ...base,
+      rows: [
+        {
+          branch: "feat-a",
+          parent: "main",
+          pr: { kind: "none" },
+          isCurrent: true,
+          needsRestack: false,
+          diverged: false,
+        },
+      ],
+      next: "none",
+    });
+    expect(output).toContain("Next: submit the stack");
+    expect(output).not.toContain("Stack is in sync.");
+  });
 });

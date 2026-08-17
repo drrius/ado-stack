@@ -114,7 +114,13 @@ function nextHint(status: StackStatus): string | undefined {
     case "restack":
       return `Next: ${pc.bold("restack onto latest parents")}`;
     case "none":
-      return status.rows.length > 0 ? pc.green("Stack is in sync.") : undefined;
+      if (status.rows.length === 0) {
+        return undefined;
+      }
+      if (status.rows.some((row) => row.pr.kind === "none")) {
+        return `Next: ${pc.bold("submit the stack")}`;
+      }
+      return pc.green("Stack is in sync.");
     default: {
       const _exhaustive: never = status.next;
       return _exhaustive;
