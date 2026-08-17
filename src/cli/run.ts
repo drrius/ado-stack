@@ -1,9 +1,9 @@
 import { authCommand } from "../commands/auth.ts";
-import { checkoutCommand, downCommand, upCommand } from "../commands/navigate.ts";
 import { configCommand } from "../commands/config.ts";
 import { loadContext } from "../commands/context.ts";
 import { createCommand } from "../commands/create.ts";
 import { initCommand } from "../commands/init.ts";
+import { checkoutCommand, downCommand, upCommand } from "../commands/navigate.ts";
 import { repairCommand } from "../commands/repair.ts";
 import { restackCommand } from "../commands/restack.ts";
 import { statusCommand } from "../commands/status.ts";
@@ -12,11 +12,11 @@ import { CliError, formatError, isCliError } from "../errors/cli-error.ts";
 import { createLogger } from "../ui/log.ts";
 import {
   type CommandName,
+  UsageError,
   parseArgv,
   printCommandHelp,
   printHelp,
   printVersion,
-  UsageError,
 } from "./parse.ts";
 
 export async function run(argv: string[]): Promise<number> {

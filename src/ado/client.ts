@@ -1,3 +1,4 @@
+import { redactHeaders, redactText } from "../ui/redact.ts";
 import { AdoError, adoErrorFromResponse, classifyHttpStatus } from "./errors.ts";
 import type { JsonPatchOp } from "./properties.ts";
 import type {
@@ -7,7 +8,6 @@ import type {
   PullRequestStatus,
   UpdatePullRequestInput,
 } from "./types.ts";
-import { redactHeaders, redactText } from "../ui/redact.ts";
 
 export const API_VERSION = "7.1";
 

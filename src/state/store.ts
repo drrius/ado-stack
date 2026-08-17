@@ -1,7 +1,7 @@
 import { mkdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { CliError } from "../errors/cli-error.ts";
-import { migrateState, type RestackPlanState, type StackState } from "./schema.ts";
+import { type RestackPlanState, type StackState, migrateState } from "./schema.ts";
 
 export class StateStore {
   constructor(readonly gitDir: string) {}

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { StackState } from "../state/schema.ts";
 import { childOf, stackOrder } from "./graph.ts";
 import { applyBranchPrefix, looksLikePrNumber, validateBranchName } from "./names.ts";
 import { downBranch, upBranch } from "./navigation.ts";
-import type { StackState } from "../state/schema.ts";
 
 const state = (): StackState => ({
   version: 1,

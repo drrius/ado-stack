@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { uniqueCommits } from "../../src/stack/ownership.ts";
 import { executeRestackStep, planRestack } from "../../src/stack/restack.ts";
 import type { StackState } from "../../src/state/schema.ts";
-import { uniqueCommits } from "../../src/stack/ownership.ts";
 import { createTempRepo, runCli, writeCommit } from "../helpers/repo.ts";
 
 async function seedStack(dir: string): Promise<void> {

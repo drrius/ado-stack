@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AdoClient } from "../../src/ado/client.ts";
-import { decodeStackProperties } from "../../src/ado/properties.ts";
 import { humanDescription } from "../../src/ado/description.ts";
+import { decodeStackProperties } from "../../src/ado/properties.ts";
 import { createTempRepo, runCli, writeCommit } from "../helpers/repo.ts";
 import { FakeAzureDevOps } from "./fake-server.ts";
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { migrateState, parseStackState, STATE_VERSION } from "./schema.ts";
+import { STATE_VERSION, migrateState, parseStackState } from "./schema.ts";
 
 describe("stack state serialization", () => {
   const valid = {

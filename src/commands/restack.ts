@@ -2,12 +2,12 @@ import { targetBranchGoneMessage } from "../ado/errors.ts";
 import { CliError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
 import {
+  type PullRequestSnapshot,
+  RestackConflictError,
   assertSafeRewrite,
   executeRestackStep,
   markStep,
   planRestack,
-  type PullRequestSnapshot,
-  RestackConflictError,
 } from "../stack/restack.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
 import {

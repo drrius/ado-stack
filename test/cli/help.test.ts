@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { runCli } from "../helpers/repo.ts";
 import { VERSION } from "../../src/version.ts";
+import { runCli } from "../helpers/repo.ts";
 
 describe("CLI flags", () => {
   test("--help and --version work without a git repo", async () => {

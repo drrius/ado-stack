@@ -3,8 +3,8 @@ import { decodeStackProperties } from "../ado/properties.ts";
 import { parseAzureDevOpsRemote } from "../ado/remote.ts";
 import type { AdoPullRequest } from "../ado/types.ts";
 import { CliError } from "../errors/cli-error.ts";
-import type { StackState } from "../state/schema.ts";
 import { stackOrder } from "../stack/graph.ts";
+import type { StackState } from "../state/schema.ts";
 import { type AppContext, createAdoClient, detectRemote, fromRefsHeads } from "./context.ts";
 
 export async function initCommand(

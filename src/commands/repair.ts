@@ -1,5 +1,5 @@
-import { reconstructFromAdo } from "./init.ts";
 import { type AppContext, createAdoClient, requireState } from "./context.ts";
+import { reconstructFromAdo } from "./init.ts";
 
 export async function repairCommand(ctx: AppContext): Promise<void> {
   const state = await requireState(ctx);

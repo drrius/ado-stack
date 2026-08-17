@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { executeRestackStep } from "../../src/stack/restack.ts";
 import { uniqueCommits } from "../../src/stack/ownership.ts";
+import { executeRestackStep } from "../../src/stack/restack.ts";
 import type { StackState } from "../../src/state/schema.ts";
 import { createTempRepo, runCli, writeCommit } from "../helpers/repo.ts";
 

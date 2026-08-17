@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { restackNeeded } from "./ownership.ts";
-import { effectiveParent, type PullRequestSnapshot } from "./restack.ts";
 import type { StackState } from "../state/schema.ts";
+import { restackNeeded } from "./ownership.ts";
+import { type PullRequestSnapshot, effectiveParent } from "./restack.ts";
 
 const state = (): StackState => ({
   version: 1,

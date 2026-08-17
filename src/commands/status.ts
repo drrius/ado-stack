@@ -2,7 +2,7 @@ import type { AdoPullRequest } from "../ado/types.ts";
 import { stackOrder } from "../stack/graph.ts";
 import { displayName } from "../stack/names.ts";
 import { restackNeeded } from "../stack/ownership.ts";
-import { effectiveParent, type PullRequestSnapshot } from "../stack/restack.ts";
+import { type PullRequestSnapshot, effectiveParent } from "../stack/restack.ts";
 import type { StackState } from "../state/schema.ts";
 import { type AppContext, fromRefsHeads, maybeAdoClient, requireState } from "./context.ts";
 

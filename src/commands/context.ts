@@ -1,10 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { authHeader, globalConfigDir, missingAuthError, resolveAuth } from "../auth/credentials.ts";
 import { AdoClient } from "../ado/client.ts";
 import { parseAzureDevOpsRemote } from "../ado/remote.ts";
-import { ConfigStore } from "../config/store.ts";
+import { authHeader, globalConfigDir, missingAuthError, resolveAuth } from "../auth/credentials.ts";
 import { type ResolvedConfig, resolveConfig } from "../config/schema.ts";
+import { ConfigStore } from "../config/store.ts";
 import { CliError } from "../errors/cli-error.ts";
 import { GitRepo } from "../git/git.ts";
 import type { StackState } from "../state/schema.ts";

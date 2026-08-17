@@ -22,8 +22,8 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "lint": "biome lint .",
-    "format": "biome format --write .",
-    "format:check": "biome format --check .",
+    "format": "biome check --write --linter-enabled=false .",
+    "format:check": "biome check --linter-enabled=false .",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "build": "bun run scripts/build.ts",
