@@ -115,16 +115,16 @@ async function homeMenu(session: Session, isRepo: boolean): Promise<HomeAction> 
     "refresh",
     "quit",
   ];
-  return pickAction(session, actions, recommendedAction(status.next) ?? "navigate", status.next);
+  const recommended = recommendedAction(status.next);
+  return pickAction(session, actions, recommended ?? "navigate", recommended);
 }
 
 async function pickAction(
   session: Session,
   actions: HomeAction[],
   initial: HomeAction,
-  next?: NextStep,
+  recommended?: HomeAction,
 ): Promise<HomeAction> {
-  const recommended = next === undefined ? undefined : recommendedAction(next);
   const choice = await select<HomeAction>({
     message: "What next?",
     options: actions.map((action) => ({
