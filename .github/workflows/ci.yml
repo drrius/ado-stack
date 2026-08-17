@@ -42,7 +42,7 @@ jobs:
         env:
           ADO_STACK_AUTH_MODE: pat
       - name: Build
-        run: bun run build
+        run: bun run build:native
       - name: Smoke the compiled CLI
         shell: bash
         run: |
@@ -50,8 +50,13 @@ jobs:
             ./dist/ado-stack-windows-x64.exe --help
             ./dist/ado-stack-windows-x64.exe --version
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            ./dist/ado-stack-darwin-x64 --help || ./dist/ado-stack-darwin-arm64 --help
-            ./dist/ado-stack-darwin-x64 --version || ./dist/ado-stack-darwin-arm64 --version
+            if [[ -f ./dist/ado-stack-darwin-arm64 ]]; then
+              ./dist/ado-stack-darwin-arm64 --help
+              ./dist/ado-stack-darwin-arm64 --version
+            else
+              ./dist/ado-stack-darwin-x64 --help
+              ./dist/ado-stack-darwin-x64 --version
+            fi
           else
             ./dist/ado-stack-linux-x64 --help
             ./dist/ado-stack-linux-x64 --version

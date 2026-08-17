@@ -10,13 +10,33 @@ const targets = [
   { target: "bun-windows-x64", outfile: "ado-stack-windows-x64.exe" },
 ] as const;
 
+const nativeOnly = process.argv.includes("--native");
+
+function isNative(target: string): boolean {
+  if (process.platform === "linux") {
+    return target === "bun-linux-x64";
+  }
+  if (process.platform === "darwin") {
+    return process.arch === "arm64" ? target === "bun-darwin-arm64" : target === "bun-darwin-x64";
+  }
+  if (process.platform === "win32") {
+    return target === "bun-windows-x64";
+  }
+  return false;
+}
+
+const selected = nativeOnly ? targets.filter((item) => isNative(item.target)) : targets;
+if (selected.length === 0) {
+  throw new Error(`No compile target for ${process.platform}/${process.arch}`);
+}
+
 const dist = join(import.meta.dir, "..", "dist");
 await mkdir(dist, { recursive: true });
 
 const entry = join(import.meta.dir, "..", "src", "index.ts");
 const built: string[] = [];
 
-for (const item of targets) {
+for (const item of selected) {
   const outfile = join(dist, item.outfile);
   const proc = Bun.spawn(
     ["bun", "build", "--compile", `--target=${item.target}`, "--outfile", outfile, entry],

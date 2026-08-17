@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "build": "bun run scripts/build.ts",
+    "build:native": "bun run scripts/build.ts --native",
     "verify": "bun run scripts/verify.ts"
   },
   "devDependencies": {
