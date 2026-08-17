@@ -1,0 +1,5 @@
+{
+  "name": "ado-stack",
+  "user": "ubuntu",
+  "install": "bun install --frozen-lockfile"
+}
