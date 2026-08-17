@@ -147,11 +147,10 @@ export async function submitCommand(
 
   await ctx.stateStore.write(state);
   ctx.log.info("");
-  ctx.log.info(`Stack submitted: ${formatStackPrChain(submitted.map(({ pr }) => pr.pullRequestId))}`);
-  logNext(
-    ctx.log,
-    "review and merge the bottom PR in Azure DevOps, then ado-stack restack",
+  ctx.log.info(
+    `Stack submitted: ${formatStackPrChain(submitted.map(({ pr }) => pr.pullRequestId))}`,
   );
+  logNext(ctx.log, "review and merge the bottom PR in Azure DevOps, then ado-stack restack");
 }
 
 async function defaultTitle(options: {

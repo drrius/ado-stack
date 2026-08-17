@@ -110,10 +110,7 @@ export async function createAdoClient(ctx: AppContext, state: StackState): Promi
   return adoClient(ctx, state, authHeader(auth));
 }
 
-export async function resolveAdoAccess(
-  ctx: AppContext,
-  state: StackState,
-): Promise<AdoAccess> {
+export async function resolveAdoAccess(ctx: AppContext, state: StackState): Promise<AdoAccess> {
   try {
     const auth = await resolveAuth({
       configDir: ctx.configDir,

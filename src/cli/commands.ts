@@ -102,8 +102,7 @@ export const COMMAND_SPECS: CommandSpec[] = [
     group: "daily",
     summary: "Show local and Azure DevOps stack state",
     usage: ["ado-stack status"],
-    detail:
-      "Print the stack from trunk to tip, pull request state, and whether restack is needed.",
+    detail: "Print the stack from trunk to tip, pull request state, and whether restack is needed.",
     flags: [{ name: "help", kind: "boolean" }],
   },
   {
@@ -160,9 +159,11 @@ export function getCommandSpec(name: string): CommandSpec | undefined {
 }
 
 export function booleanFlagNames(command: CommandSpec["name"]): string[] {
-  return getCommandSpec(command)?.flags
-    .filter((flag) => flag.kind === "boolean")
-    .map((flag) => flag.name) ?? [];
+  return (
+    getCommandSpec(command)
+      ?.flags.filter((flag) => flag.kind === "boolean")
+      .map((flag) => flag.name) ?? []
+  );
 }
 
 export function knownFlagNames(command: CommandSpec["name"]): string[] {

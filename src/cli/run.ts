@@ -11,13 +11,7 @@ import { submitCommand } from "../commands/submit.ts";
 import { CliError, formatError, isCliError } from "../errors/cli-error.ts";
 import { type Logger, createLogger } from "../ui/log.ts";
 import type { CommandSpec } from "./commands.ts";
-import {
-  UsageError,
-  parseArgv,
-  printCommandHelp,
-  printHelp,
-  printVersion,
-} from "./parse.ts";
+import { UsageError, parseArgv, printCommandHelp, printHelp, printVersion } from "./parse.ts";
 
 export async function run(argv: string[]): Promise<number> {
   let log: Logger | undefined;
@@ -69,7 +63,7 @@ async function dispatch(
   ctx: Awaited<ReturnType<typeof loadContext>>,
   args: string[],
   flags: Record<string, string | boolean>,
-): Promise<number | void> {
+): Promise<number | undefined> {
   switch (command) {
     case "init":
       await initCommand(ctx, flags);
