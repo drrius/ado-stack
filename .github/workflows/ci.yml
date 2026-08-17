@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Disable Git CRLF conversion
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Lint
+        run: bun run lint
+      - name: Format
+        run: bun run format:check
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Test
+        run: bun test
+        env:
+          ADO_STACK_AUTH_MODE: pat
+      - name: Build
+        run: bun run build:native
+      - name: Smoke the compiled CLI
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ./dist/ado-stack-windows-x64.exe --help
+            ./dist/ado-stack-windows-x64.exe --version
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            if [[ -f ./dist/ado-stack-darwin-arm64 ]]; then
+              ./dist/ado-stack-darwin-arm64 --help
+              ./dist/ado-stack-darwin-arm64 --version
+            else
+              ./dist/ado-stack-darwin-x64 --help
+              ./dist/ado-stack-darwin-x64 --version
+            fi
+          else
+            ./dist/ado-stack-linux-x64 --help
+            ./dist/ado-stack-linux-x64 --version
+          fi
