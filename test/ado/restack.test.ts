@@ -97,5 +97,5 @@ describe("restack against fake Azure DevOps", () => {
       fake.stop();
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 });

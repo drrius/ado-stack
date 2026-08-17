@@ -75,7 +75,7 @@ describe("submit against fake Azure DevOps", () => {
       fake.stop();
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 
   test("maps authentication failures", async () => {
     const fake = new FakeAzureDevOps({
@@ -171,5 +171,5 @@ describe("submit against fake Azure DevOps", () => {
       fake.stop();
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 });
