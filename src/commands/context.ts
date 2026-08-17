@@ -24,6 +24,10 @@ export type AppContext = {
   configDir: string;
 };
 
+export type AdoAccess =
+  | { status: "ready"; client: AdoClient }
+  | { status: "unavailable"; reason: "unauthenticated" | "error"; message: string };
+
 export async function loadContext(options: {
   cwd: string;
   log: Logger;
@@ -103,27 +107,43 @@ export async function createAdoClient(ctx: AppContext, state: StackState): Promi
   if (auth.kind === "none") {
     throw missingAuthError();
   }
+  return adoClient(ctx, state, authHeader(auth));
+}
+
+export async function resolveAdoAccess(
+  ctx: AppContext,
+  state: StackState,
+): Promise<AdoAccess> {
+  try {
+    const auth = await resolveAuth({
+      configDir: ctx.configDir,
+      authMode: ctx.config.authMode,
+    });
+    if (auth.kind === "none") {
+      return {
+        status: "unavailable",
+        reason: "unauthenticated",
+        message: "Not authenticated to Azure DevOps.",
+      };
+    }
+    return { status: "ready", client: adoClient(ctx, state, authHeader(auth)) };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      reason: "error",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function adoClient(ctx: AppContext, state: StackState, authorization: string): AdoClient {
   return new AdoClient({
     organizationUrl: state.organization,
     project: state.project,
     repositoryId: state.repositoryId ?? state.repository,
-    authorization: authHeader(auth),
+    authorization,
     logger: ctx.log,
   });
-}
-
-export async function maybeAdoClient(
-  ctx: AppContext,
-  state: StackState,
-): Promise<AdoClient | undefined> {
-  try {
-    return await createAdoClient(ctx, state);
-  } catch (error) {
-    ctx.log.debug(
-      `Azure DevOps client unavailable: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return undefined;
-  }
 }
 
 export function refsHeads(branch: string): string {

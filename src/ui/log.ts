@@ -28,7 +28,7 @@ export function createLogger(options: {
 
   return {
     error: (message) => write(stderr, message),
-    warn: (message) => write(stderr, message),
+    warn: (message) => write(stderr, `warning: ${message}`),
     info: (message) => write(stdout, message),
     success: (message) => write(stdout, `✓ ${message}`),
     verbose: (message) => {
