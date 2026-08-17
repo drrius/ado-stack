@@ -21,7 +21,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
+      - name: Disable Git CRLF conversion
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -35,6 +39,8 @@ jobs:
         run: bun run typecheck
       - name: Test
         run: bun test
+        env:
+          ADO_STACK_AUTH_MODE: pat
       - name: Build
         run: bun run build
       - name: Smoke the compiled CLI

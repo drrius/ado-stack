@@ -72,15 +72,25 @@ export async function azureCliAccessToken(
 async function runAz(
   args: string[],
 ): Promise<{ stdout: string; exitCode: number; stderr: string }> {
+  if (!Bun.which("az")) {
+    return { stdout: "", stderr: "az not found", exitCode: 127 };
+  }
   const proc = Bun.spawn(["az", ...args], {
     stdout: "pipe",
     stderr: "pipe",
     env: process.env,
   });
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
-  return { stdout, stderr, exitCode };
+  const timer = setTimeout(() => {
+    proc.kill();
+  }, 2500);
+  try {
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
+    return { stdout, stderr, exitCode };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function authHeader(auth: Exclude<ResolvedAuth, { kind: "none" }>): string {
