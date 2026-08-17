@@ -117,11 +117,8 @@ function formatRow(options: {
   } else if (pr) {
     flags.push("✓ synced");
   }
-  if (
-    record.lastKnownRemoteTip &&
-    record.lastLocalTip &&
-    record.lastKnownRemoteTip !== record.lastLocalTip
-  ) {
+  const localTip = options.parentTips[options.branch] ?? record.lastLocalTip;
+  if (record.lastKnownRemoteTip && localTip && record.lastKnownRemoteTip !== localTip) {
     flags.push("local/remote diverge");
   }
   return `  ${prLabel.padEnd(6)} ${name} → ${parent} ${status} ${flags.join("  ")}`.trimEnd();

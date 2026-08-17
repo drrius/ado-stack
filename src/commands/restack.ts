@@ -1,13 +1,20 @@
 import { targetBranchGoneMessage } from "../ado/errors.ts";
+import {
+  decodeStackProperties,
+  encodeStackProperties,
+  propertyPatches,
+} from "../ado/properties.ts";
 import { CliError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
 import {
   type PullRequestSnapshot,
   RestackConflictError,
+  applyRestackStepToState,
   assertSafeRewrite,
   executeRestackStep,
   markStep,
   planRestack,
+  resolveOntoSha,
 } from "../stack/restack.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
 import {
@@ -70,18 +77,13 @@ async function continueRestack(ctx: AppContext): Promise<void> {
         `Rebase of \`${conflicted.branch}\` did not complete. The branch tip is unchanged.\n\nFinish the rebase or run \`ado-stack restack --abort\`.`,
       );
     }
-    const record = state.branches[conflicted.branch];
-    if (record) {
-      record.parent = conflicted.onto;
-      record.lastRestackBase = conflicted.ontoSha;
-      record.lastLocalTip = tip;
-    }
-    await pushRewritten(ctx, state, conflicted);
-    await retargetIfNeeded(ctx, state, conflicted);
-    await ctx.stateStore.write(state);
+    const nextState = applyRestackStepToState(state, conflicted, tip);
+    await pushRewritten(ctx, nextState, conflicted);
+    await retargetIfNeeded(ctx, nextState, conflicted);
+    await ctx.stateStore.write(nextState);
     const nextPlan = markStep(plan, conflicted.branch, "done");
     await ctx.stateStore.writeRestackPlan(nextPlan);
-    await runPlan(ctx, state, nextPlan);
+    await runPlan(ctx, nextState, nextPlan);
     return;
   }
   await runPlan(ctx, state, plan);
@@ -109,7 +111,7 @@ async function runPlan(
     }
     const live: RestackStep = {
       ...step,
-      ontoSha: await ctx.git.getBranchTip(step.onto),
+      ontoSha: await resolveOntoSha(ctx.git, current, step.onto),
       preRebaseTip: await ctx.git.getBranchTip(step.branch),
       oldBase: current.branches[step.branch]?.lastRestackBase ?? step.oldBase,
     };
@@ -195,6 +197,24 @@ async function retargetIfNeeded(
     await ado.updatePullRequest(pr.pullRequestId, { targetRefName: refsHeads(step.retargetPrTo) });
   } catch (error) {
     throw new CliError(targetBranchGoneMessage(step.retargetPrTo), { cause: error });
+  }
+  const previous = await ado.getPullRequestProperties(pr.pullRequestId);
+  const existing = decodeStackProperties(previous);
+  const stackId = state.stackId ?? existing?.stackId;
+  if (stackId) {
+    await ado.updatePullRequestProperties(
+      pr.pullRequestId,
+      propertyPatches(
+        encodeStackProperties({
+          version: existing?.version ?? "1",
+          stackId,
+          parent: step.retargetPrTo,
+          branch: step.branch,
+          lastRestackBase: record.lastRestackBase,
+        }),
+        previous,
+      ),
+    );
   }
   ctx.log.success(`PR #${pr.pullRequestId} ${step.branch} → ${step.retargetPrTo}`);
 }

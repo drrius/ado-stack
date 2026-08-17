@@ -82,7 +82,7 @@ export async function assessBranch(options: {
     branch: options.branch,
     pullRequests: options.pullRequests,
   });
-  const ontoSha = await options.git.getBranchTip(resolved.parent);
+  const ontoSha = await resolveOntoSha(options.git, options.state, resolved.parent);
   const preRebaseTip = await options.git.getBranchTip(options.branch);
   const needsRebase = resolved.parentCompleted || record.lastRestackBase !== ontoSha;
   const assessment: RestackAssessment = {
@@ -101,6 +101,20 @@ export async function assessBranch(options: {
   return assessment;
 }
 
+export async function resolveOntoSha(
+  git: GitRepo,
+  state: StackState,
+  parent: string,
+): Promise<string> {
+  if (parent === state.defaultBranch) {
+    const remoteExists = await git.remoteBranchExists(state.remoteName, parent);
+    if (remoteExists) {
+      return git.getBranchTip(`${state.remoteName}/${parent}`);
+    }
+  }
+  return git.getBranchTip(parent);
+}
+
 export async function planRestack(options: {
   git: GitRepo;
   state: StackState;
@@ -109,6 +123,14 @@ export async function planRestack(options: {
   const steps: RestackStep[] = [];
   let ancestorRewritten = false;
   for (const branch of stackOrder(options.state)) {
+    const record = options.state.branches[branch];
+    const ownPr =
+      record?.pullRequestId === undefined
+        ? undefined
+        : options.pullRequests.get(record.pullRequestId);
+    if (ownPr?.status === "completed") {
+      continue;
+    }
     const assessment = await assessBranch({ ...options, branch });
     if (!assessment.needsRebase && !ancestorRewritten) {
       continue;
@@ -218,19 +240,31 @@ export async function executeRestackStep(options: {
     throw error;
   }
   const newTip = await options.git.getBranchTip(options.step.branch);
+  return applyRestackStepToState(options.state, options.step, newTip);
+}
+
+export function applyRestackStepToState(
+  state: StackState,
+  step: RestackStep,
+  newTip: string,
+): StackState {
+  const record = state.branches[step.branch];
+  if (!record) {
+    throw new CliError(`\`${step.branch}\` is not tracked.`);
+  }
   const next: StackState = {
-    ...options.state,
+    ...state,
     branches: {
-      ...options.state.branches,
-      [options.step.branch]: {
+      ...state.branches,
+      [step.branch]: {
         ...record,
-        parent: options.step.onto,
-        lastRestackBase: options.step.ontoSha,
+        parent: step.onto,
+        lastRestackBase: step.ontoSha,
         lastLocalTip: newTip,
       },
     },
   };
-  for (const skipped of completedAncestorsDropped(options.state, options.step)) {
+  for (const skipped of completedAncestorsDropped(state, step)) {
     delete next.branches[skipped];
   }
   return next;
