@@ -16,6 +16,10 @@ CLI commands
 
 `--help` and `--version` do not require a Git repository. Other commands do, except `auth` and `config`.
 
+## Interactive UI
+
+`src/tui/session.ts` is a prompt loop built on `@clack/prompts`. A bare `ado-stack` at a TTY launches it. `src/tui/mode.ts` decides that from the parsed argv, `--no-tui`, `ADO_STACK_NO_TUI`, and both TTY flags; anything else stays on the argv CLI. Screens call the same functions in `src/commands/` through a logger whose sink is the prompt renderer, so the two surfaces cannot drift. The home screen consumes `loadStackStatus` from `src/commands/status.ts`; the `status` command renders the same model as plain text.
+
 ## Git layer
 
 `src/git/git.ts` runs `git` with an argument array. Stdout and stderr are captured separately. Failures become `GitError` with the human-readable command.
