@@ -2,7 +2,7 @@ import type { AdoPullRequest } from "../ado/types.ts";
 import { stackOrder } from "../stack/graph.ts";
 import { displayName } from "../stack/names.ts";
 import { restackNeeded } from "../stack/ownership.ts";
-import { type PullRequestSnapshot, effectiveParent } from "../stack/restack.ts";
+import { type PullRequestSnapshot, effectiveParent, resolveOntoSha } from "../stack/restack.ts";
 import type { StackState } from "../state/schema.ts";
 import { type AppContext, fromRefsHeads, maybeAdoClient, requireState } from "./context.ts";
 
@@ -12,9 +12,15 @@ export async function statusCommand(ctx: AppContext): Promise<void> {
   const current = (await ctx.git.currentBranch()) ?? "HEAD";
   const ado = await maybeAdoClient(ctx, state);
   const prs = new Map<number, AdoPullRequest>();
+  try {
+    await ctx.git.fetch(state.remoteName);
+  } catch (error) {
+    ctx.log.debug(
+      `Could not fetch ${state.remoteName}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   if (ado) {
     try {
-      await ctx.git.fetch(state.remoteName);
       for (const branch of order) {
         const id = state.branches[branch]?.pullRequestId;
         if (id === undefined) {
@@ -37,7 +43,7 @@ export async function statusCommand(ctx: AppContext): Promise<void> {
   const names = [state.defaultBranch, ...order];
   for (const name of names) {
     try {
-      parentTips[name] = await ctx.git.getBranchTip(name);
+      parentTips[name] = await resolveOntoSha(ctx.git, state, name);
     } catch {
       ctx.log.debug(`No local tip for ${name}`);
     }
