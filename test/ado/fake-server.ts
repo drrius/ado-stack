@@ -187,7 +187,7 @@ export class FakeAzureDevOps {
     if (continuation + top < items.length) {
       headers.set("x-ms-continuationtoken", String(continuation + top));
     }
-    return new Response(JSON.stringify(slice), { headers });
+    return new Response(JSON.stringify({ count: items.length, value: slice }), { headers });
   }
 }
 

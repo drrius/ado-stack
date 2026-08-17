@@ -206,7 +206,8 @@ export async function executeRestackStep(options: {
     throw new CliError(`\`${options.step.branch}\` is not tracked.`);
   }
   if (options.step.oldBase === options.step.ontoSha) {
-    return options.state;
+    const newTip = await options.git.getBranchTip(options.step.branch);
+    return applyRestackStepToState(options.state, options.step, newTip);
   }
   const unique = await options.git.getCommitsBetween(options.step.oldBase, options.step.branch);
   if (unique.length === 0) {

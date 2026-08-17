@@ -8,6 +8,7 @@ import type { AdoPullRequest } from "../ado/types.ts";
 import { CliError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
 import { displayName } from "../stack/names.ts";
+import { assertSafeRewrite } from "../stack/restack.ts";
 import type { StackState } from "../state/schema.ts";
 import { type AppContext, createAdoClient, refsHeads, requireState } from "./context.ts";
 
@@ -45,7 +46,26 @@ export async function submitCommand(
     const needsPush =
       !remoteExists || (await ctx.git.getBranchTip(`${state.remoteName}/${branch}`)) !== localTip;
     if (needsPush) {
-      await ctx.git.push(state.remoteName, branch, { setUpstream: true });
+      if (!remoteExists) {
+        await ctx.git.push(state.remoteName, branch, { setUpstream: true });
+      } else {
+        const remoteTip = await ctx.git.getBranchTip(`${state.remoteName}/${branch}`);
+        if (await ctx.git.isAncestor(remoteTip, localTip)) {
+          await ctx.git.push(state.remoteName, branch, { setUpstream: true });
+        } else {
+          await assertSafeRewrite({
+            git: ctx.git,
+            state,
+            branch,
+            remoteName: state.remoteName,
+          });
+          await ctx.git.forcePushWithLease({
+            remote: state.remoteName,
+            branch,
+            expectedRemoteSha: record.lastKnownRemoteTip ?? remoteTip,
+          });
+        }
+      }
       ctx.log.success(`${displayName(branch, ctx.config.branchPrefix)} pushed`);
     } else {
       ctx.log.verbose(`${branch} already up to date on ${state.remoteName}`);

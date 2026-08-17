@@ -61,13 +61,13 @@ export class AdoClient {
       if (continuation) {
         query.continuationToken = continuation;
       }
-      const { body, headers } = await this.requestWithHeaders<AdoPullRequest[]>(
+      const { body, headers } = await this.requestWithHeaders<unknown>(
         "list pull requests",
         "GET",
         this.repoPath("/pullrequests"),
         { query },
       );
-      results.push(...body);
+      results.push(...unwrapCollection<AdoPullRequest>(body, "list pull requests"));
       continuation = headers.get("x-ms-continuationtoken") ?? undefined;
     } while (continuation);
     return results;
@@ -230,6 +230,20 @@ function tryJson(text: string): unknown {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function unwrapCollection<T>(body: unknown, operation: string): T[] {
+  if (Array.isArray(body)) {
+    return body as T[];
+  }
+  if (isRecord(body) && Array.isArray(body.value)) {
+    return body.value as T[];
+  }
+  throw new AdoError({
+    status: 0,
+    kind: "unknown",
+    message: `Azure DevOps ${operation} returned an object without a value array.`,
+  });
 }
 
 function flattenProperties(raw: unknown): Record<string, string> {

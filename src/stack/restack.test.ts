@@ -57,4 +57,23 @@ describe("applyRestackStepToState", () => {
     expect(next.branches.C?.parent).toBe("B");
     expect(stackOrder(next)).toEqual(["B", "C"]);
   });
+
+  test("a no-op rebase still retargets and drops completed ancestors", () => {
+    const next = applyRestackStepToState(
+      state(),
+      {
+        branch: "B",
+        onto: "main",
+        ontoSha: "a2",
+        oldBase: "a2",
+        preRebaseTip: "b2",
+        retargetPrTo: "main",
+        status: "pending",
+      },
+      "b2",
+    );
+    expect(next.branches.A).toBeUndefined();
+    expect(next.branches.B?.parent).toBe("main");
+    expect(stackOrder(next)).toEqual(["B", "C"]);
+  });
 });

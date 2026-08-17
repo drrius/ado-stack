@@ -115,7 +115,13 @@ async function runPlan(
       preRebaseTip: await ctx.git.getBranchTip(step.branch),
       oldBase: current.branches[step.branch]?.lastRestackBase ?? step.oldBase,
     };
-    await ctx.stateStore.writeRestackPlan(markStep(plan, step.branch, "in-progress"));
+    plan = {
+      ...plan,
+      steps: plan.steps.map((item) =>
+        item.branch === live.branch ? { ...live, status: "in-progress" } : item,
+      ),
+    };
+    await ctx.stateStore.writeRestackPlan(plan);
     try {
       current = await executeRestackStep({ git: ctx.git, state: current, step: live });
     } catch (error) {

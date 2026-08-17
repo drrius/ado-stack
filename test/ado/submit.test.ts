@@ -129,4 +129,47 @@ describe("submit against fake Azure DevOps", () => {
       fake.stop();
     }
   });
+
+  test("submit force-with-lease after an amend", async () => {
+    const repo = await createTempRepo();
+    const fake = new FakeAzureDevOps({
+      organization: "example",
+      project: "Platform",
+      repository: "app",
+      token: "test-pat",
+    });
+    const env = { ADO_STACK_PAT: "test-pat" };
+    try {
+      const origin = await fake.listen();
+      await runCli(
+        [
+          "init",
+          "--organization",
+          origin,
+          "--project",
+          "Platform",
+          "--repository",
+          "app",
+          "--default-branch",
+          "main",
+        ],
+        { cwd: repo.dir, env },
+      );
+      await runCli(["create", "schema"], { cwd: repo.dir, env });
+      await writeCommit(repo.git, "schema.sql", "v1\n", "add schema");
+      const bare = await createTempRepo({ bare: true });
+      await repo.git.run(["remote", "add", "origin", bare.dir]);
+      await repo.git.push("origin", "main", { setUpstream: true });
+      const first = await runCli(["submit"], { cwd: repo.dir, env });
+      expect(first.exitCode).toBe(0);
+      await repo.git.run(["commit", "--amend", "-m", "add schema amended"]);
+      const second = await runCli(["submit"], { cwd: repo.dir, env });
+      expect(second.exitCode).toBe(0);
+      expect(second.stdout).toContain("pushed");
+      await bare.cleanup();
+    } finally {
+      fake.stop();
+      await repo.cleanup();
+    }
+  });
 });
