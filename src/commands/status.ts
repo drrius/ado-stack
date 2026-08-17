@@ -131,11 +131,7 @@ function formatRow(options: {
   const name = formatBranch(options.branch, options.ctx.config.branchPrefix).padEnd(12);
   const parent = formatBranch(record.parent, options.ctx.config.branchPrefix).padEnd(10);
   const status = (
-    pr
-      ? prStatusLabel(pr)
-      : record.pullRequestId !== undefined && options.access.status === "unavailable"
-        ? "UNKNOWN"
-        : "LOCAL"
+    pr ? prStatusLabel(pr) : record.pullRequestId !== undefined ? "UNKNOWN" : "LOCAL"
   ).padEnd(10);
   const flags: string[] = [];
   if (options.branch === options.current) {
