@@ -21,6 +21,10 @@ describe("shouldLaunchTui", () => {
     expect(launch(["--help"])).toBe(false);
   });
 
+  test("help command stays on the CLI", () => {
+    expect(launch(["help"])).toBe(false);
+  });
+
   test("explicit --version stays on the CLI", () => {
     expect(launch(["--version"])).toBe(false);
   });

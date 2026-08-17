@@ -107,7 +107,7 @@ export function parseArgv(argv: string[]): ParsedCli {
   if (commandRaw === "help") {
     const helpTarget = commandArgs[0];
     if (helpTarget === undefined) {
-      return { kind: "global-help", flags };
+      return { kind: "global-help", flags: { ...flags, help: true } };
     }
     const helpSpec = getCommandSpec(helpTarget);
     if (!helpSpec) {
