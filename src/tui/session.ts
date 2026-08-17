@@ -421,6 +421,40 @@ async function flowRestack(session: Session): Promise<void> {
     await conflictLoop(session);
     return;
   }
+  const savedPlan = await ctx.stateStore.readRestackPlan();
+  if (savedPlan) {
+    note(
+      "A previous restack left a saved plan. Continue it instead of starting a new one.",
+      "Restack in progress",
+      { ...io },
+    );
+    const choice = await select<"continue" | "abort" | "back">({
+      message: "Resume restack?",
+      options: [
+        { value: "continue", label: "Continue restack", hint: "finish the saved plan" },
+        { value: "abort", label: "Abort restack", hint: "clear the saved plan" },
+        { value: "back", label: "Back to menu" },
+      ],
+      ...io,
+    });
+    if (isCancel(choice) || choice === "back") {
+      return;
+    }
+    if (choice === "abort") {
+      await restackCommand(ctx, { abort: true });
+      return;
+    }
+    try {
+      await restackCommand(ctx, { continue: true });
+    } catch (error) {
+      if (!(error instanceof RestackConflictError)) {
+        throw error;
+      }
+      log.warn(`Rebase conflict on \`${error.branch}\`. Git state was left in place.`, { ...io });
+      await conflictLoop(session);
+    }
+    return;
+  }
   const plan = await previewRestack(ctx);
   if (plan.steps.length === 0) {
     log.info("Stack is already up to date.", { ...io });
