@@ -5,20 +5,18 @@ import {
   writeStoredPat,
 } from "../auth/credentials.ts";
 import { CliError } from "../errors/cli-error.ts";
+import { logNext } from "../ui/next.ts";
+import { readSecretLine } from "../ui/prompt.ts";
 import type { AppContext } from "./context.ts";
 
-export async function authCommand(
-  ctx: AppContext,
-  args: string[],
-  flags: Record<string, string | boolean>,
-): Promise<void> {
+export async function authCommand(ctx: AppContext, args: string[]): Promise<void> {
   const sub = args[0] ?? "status";
   switch (sub) {
     case "status":
       await showStatus(ctx);
       return;
     case "login":
-      await login(ctx, flags);
+      await login(ctx);
       return;
     case "logout":
       await deleteStoredPat(ctx.configDir);
@@ -36,16 +34,18 @@ async function showStatus(ctx: AppContext): Promise<void> {
   });
   if (auth.kind === "none") {
     ctx.log.info("Not authenticated.");
-    ctx.log.info("Set AZURE_DEVOPS_EXT_PAT, run `ado-stack auth login`, or `az login`.");
+    logNext(ctx.log, "ado-stack auth login");
     return;
   }
   ctx.log.info(`Authenticated via ${auth.kind} (${auth.source}).`);
 }
 
-async function login(ctx: AppContext, flags: Record<string, string | boolean>): Promise<void> {
+async function login(ctx: AppContext): Promise<void> {
   const fromEnv = process.env.ADO_STACK_PAT ?? process.env.AZURE_DEVOPS_EXT_PAT;
-  let pat = typeof flags.pat === "string" ? flags.pat : fromEnv;
-  if (!pat && !process.stdin.isTTY) {
+  let pat = fromEnv;
+  if (!pat && process.stdin.isTTY) {
+    pat = (await readSecretLine("PAT: ")).trim();
+  } else if (!pat) {
     pat = (await Bun.stdin.text()).trim();
   }
   if (!pat) {

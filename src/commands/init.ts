@@ -5,6 +5,7 @@ import type { AdoPullRequest } from "../ado/types.ts";
 import { CliError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
 import type { StackState } from "../state/schema.ts";
+import { logNext } from "../ui/next.ts";
 import { type AppContext, createAdoClient, detectRemote, fromRefsHeads } from "./context.ts";
 
 export async function initCommand(
@@ -62,6 +63,8 @@ export async function initCommand(
     };
   }
 
+  let adoMetadataLoaded = false;
+  let adoMetadataError: string | undefined;
   try {
     const ado = await createAdoClient(ctx, state);
     const repo = await ado.getRepository();
@@ -72,21 +75,30 @@ export async function initCommand(
     state.repositoryId = repositoryId;
     state.defaultBranch = defaultBranch;
     const rebuilt = await reconstructFromAdo(ctx, ado, state);
+    adoMetadataLoaded = true;
     if (rebuilt) {
       state = rebuilt;
       ctx.log.success("Rebuilt stack state from Azure DevOps pull request metadata.");
     }
   } catch (error) {
-    ctx.log.warn(
-      `Initialized local state without Azure DevOps metadata: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    adoMetadataError = error instanceof Error ? error.message : String(error);
   }
 
   await ctx.stateStore.write(state);
   const layers = Object.keys(state.branches).length;
+  const repositoryLabel = `${state.organizationName}/${state.project}/${state.repository}`;
+  const stackDetails = `default branch ${state.defaultBranch}${layers ? `, ${layers} tracked branches` : ""}`;
+  if (adoMetadataLoaded) {
+    ctx.log.info(`Initialized ado-stack for ${repositoryLabel} (${stackDetails}).`);
+    return;
+  }
   ctx.log.info(
-    `Initialized ado-stack for ${state.organizationName}/${state.project}/${state.repository} (default branch ${state.defaultBranch}${layers ? `, ${layers} tracked branches` : ""}).`,
+    `Wrote local ado-stack state for ${repositoryLabel} (${stackDetails}; Azure DevOps not connected).`,
   );
+  ctx.log.warn(
+    `Azure DevOps metadata was not loaded: ${adoMetadataError ?? "Azure DevOps is unavailable"}. Run \`ado-stack init\` again after login.`,
+  );
+  logNext(ctx.log, "ado-stack auth login");
 }
 
 export async function reconstructFromAdo(

@@ -110,7 +110,7 @@ function humanAdoMessage(
   const suffix = serverMessage ? `\n\n${serverMessage}` : "";
   switch (kind) {
     case "unauthenticated":
-      return `Azure DevOps rejected the credentials used to ${operation}.${suffix}\n\nRun \`ado-stack auth\` to verify authentication.`;
+      return `Azure DevOps rejected the credentials used to ${operation}.${suffix}\n\nRun \`ado-stack auth login\` to update authentication.`;
     case "expired":
       return `Azure DevOps credentials expired while trying to ${operation}.${suffix}`;
     case "forbidden":
@@ -138,7 +138,7 @@ function hintFor(kind: AdoFailureKind): string | undefined {
   switch (kind) {
     case "unauthenticated":
     case "expired":
-      return "Set AZURE_DEVOPS_EXT_PAT or run `az login`, then `ado-stack auth`.";
+      return "Set AZURE_DEVOPS_EXT_PAT, run `ado-stack auth login`, or run `az login`.";
     case "not-found":
       return "Run `ado-stack init` with `--organization`, `--project`, and `--repository` if remote detection failed.";
     default:

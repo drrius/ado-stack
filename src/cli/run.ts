@@ -9,9 +9,9 @@ import { restackCommand } from "../commands/restack.ts";
 import { statusCommand } from "../commands/status.ts";
 import { submitCommand } from "../commands/submit.ts";
 import { CliError, formatError, isCliError } from "../errors/cli-error.ts";
-import { createLogger } from "../ui/log.ts";
+import { type Logger, createLogger } from "../ui/log.ts";
+import type { CommandSpec } from "./commands.ts";
 import {
-  type CommandName,
   UsageError,
   parseArgv,
   printCommandHelp,
@@ -20,6 +20,7 @@ import {
 } from "./parse.ts";
 
 export async function run(argv: string[]): Promise<number> {
+  let log: Logger | undefined;
   try {
     const parsed = parseArgv(argv);
     if (parsed.kind === "global-help") {
@@ -30,7 +31,7 @@ export async function run(argv: string[]): Promise<number> {
       printVersion();
       return 0;
     }
-    const log = createLogger({ verbose: parsed.flags.verbose, debug: parsed.flags.debug });
+    log = createLogger({ verbose: parsed.flags.verbose, debug: parsed.flags.debug });
     log.debug(`command=${parsed.command} args=${parsed.args.join(" ")}`);
     if (parsed.flags.help) {
       printCommandHelp(parsed.command);
@@ -43,14 +44,19 @@ export async function run(argv: string[]): Promise<number> {
       debug: parsed.flags.debug,
       requireGit: parsed.command !== "auth" && parsed.command !== "config",
     });
-    await dispatch(parsed.command, ctx, parsed.args, parsed.commandFlags);
-    return 0;
+    const exitCode = await dispatch(parsed.command, ctx, parsed.args, parsed.commandFlags);
+    return exitCode ?? 0;
   } catch (error) {
     if (error instanceof UsageError) {
       console.error(error.message);
       return 2;
     }
-    console.error(formatError(error));
+    const message = formatError(error);
+    if (log) {
+      log.error(message);
+    } else {
+      console.error(message);
+    }
     if (isCliError(error)) {
       return error.exitCode;
     }
@@ -59,11 +65,11 @@ export async function run(argv: string[]): Promise<number> {
 }
 
 async function dispatch(
-  command: CommandName,
+  command: CommandSpec["name"],
   ctx: Awaited<ReturnType<typeof loadContext>>,
   args: string[],
   flags: Record<string, string | boolean>,
-): Promise<void> {
+): Promise<number | void> {
   switch (command) {
     case "init":
       await initCommand(ctx, flags);
@@ -90,19 +96,12 @@ async function dispatch(
       await checkoutCommand(ctx, args);
       return;
     case "auth":
-      await authCommand(ctx, args, flags);
+      await authCommand(ctx, args);
       return;
     case "config":
-      await configCommand(ctx, args, flags);
-      return;
+      return configCommand(ctx, args, flags);
     case "repair":
       await repairCommand(ctx);
-      return;
-    case "help":
-      printHelp();
-      return;
-    case "version":
-      printVersion();
       return;
     default: {
       const _exhaustive: never = command;
