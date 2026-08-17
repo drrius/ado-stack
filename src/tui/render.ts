@@ -110,14 +110,13 @@ function nextHint(status: StackStatus): string | undefined {
       return `Next: ${pc.bold("log in to Azure DevOps")} (Authentication)`;
     case "create":
       return `Next: ${pc.bold("create a stack branch")}`;
+    case "submit":
+      return `Next: ${pc.bold("submit the stack")}`;
     case "restack":
       return `Next: ${pc.bold("restack onto latest parents")}`;
     case "none":
       if (status.rows.length === 0) {
         return undefined;
-      }
-      if (status.rows.some((row) => row.pr.kind === "none")) {
-        return `Next: ${pc.bold("submit the stack")}`;
       }
       return pc.green("Stack is in sync.");
     default: {

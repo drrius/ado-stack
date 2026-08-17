@@ -147,6 +147,8 @@ function recommendedAction(next: NextStep): HomeAction | undefined {
       return "auth";
     case "create":
       return "create";
+    case "submit":
+      return "submit";
     case "restack":
       return "restack";
     case "none":

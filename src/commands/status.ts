@@ -27,7 +27,7 @@ export type AdoStatusAccess =
   | { kind: "ready"; loadError?: string }
   | { kind: "unavailable"; reason: "unauthenticated" | "error"; message: string };
 
-export type NextStep = "auth-login" | "create" | "restack" | "none";
+export type NextStep = "auth-login" | "create" | "submit" | "restack" | "none";
 
 export type StackStatus = {
   rows: StatusRow[];
@@ -120,6 +120,9 @@ function nextStep(ado: AdoStatusAccess, rows: StatusRow[]): NextStep {
   if (rows.some((row) => row.needsRestack)) {
     return "restack";
   }
+  if (rows.some((row) => row.pr.kind === "none")) {
+    return "submit";
+  }
   return "none";
 }
 
@@ -161,6 +164,9 @@ function renderStatus(ctx: AppContext, status: StackStatus): void {
       return;
     case "create":
       logNext(ctx.log, "ado-stack create <name>");
+      return;
+    case "submit":
+      logNext(ctx.log, "ado-stack submit");
       return;
     case "restack":
       logNext(ctx.log, "ado-stack restack");

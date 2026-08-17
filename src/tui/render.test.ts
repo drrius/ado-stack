@@ -92,7 +92,7 @@ describe("renderStackLines", () => {
           diverged: false,
         },
       ],
-      next: "none",
+      next: "submit",
     });
     expect(output).toContain("Next: submit the stack");
     expect(output).not.toContain("Stack is in sync.");
