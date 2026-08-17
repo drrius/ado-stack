@@ -38,6 +38,7 @@ describe("status sync flags", () => {
       expect(status.exitCode).toBe(0);
       expect(status.stdout).toContain("local/remote diverge");
       expect(status.stdout).toContain("Not authenticated to Azure DevOps.");
+      expect(status.stdout).toContain("Next: ado-stack auth login");
       const row = status.stdout.split("\n").find((line) => line.includes("#9"));
       expect(row).toContain("UNKNOWN");
       expect(row).not.toContain("LOCAL");
