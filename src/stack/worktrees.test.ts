@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   formatDirtyWorktreeRefusal,
-  formatHeldWorktreeRefusal,
   heldBranchesOutsideCurrent,
   planRestackWorktrees,
 } from "./worktrees.ts";
@@ -63,15 +62,12 @@ describe("planRestackWorktrees", () => {
 });
 
 describe("worktree refusal copy", () => {
-  test("lists every held branch and its worktree", () => {
-    const message = formatHeldWorktreeRefusal([
+  test("lists every blocked branch and its worktree", () => {
+    const message = formatDirtyWorktreeRefusal([
       { branch: "scratch/wt-b", worktreePath: "/tmp/ados-probe" },
     ]);
     expect(message).toContain("`scratch/wt-b`");
     expect(message).toContain("/tmp/ados-probe");
     expect(message).toContain("No branches were rebased or pushed.");
-    expect(formatDirtyWorktreeRefusal([{ branch: "B", worktreePath: "/wt" }])).toContain(
-      "not ready",
-    );
   });
 });

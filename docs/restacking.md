@@ -104,7 +104,7 @@ Before `rebase --onto`:
 - the remote tip equals `lastKnownRemoteTip` (no unknown remote commits)
 - every branch in the operation set is mapped to the worktree that holds it
 
-If another worktree holds a branch and `git status --porcelain` is empty, restack runs `git -C <path> rebase --onto` there and leaves that worktree on the rebased branch. If any holding worktree is dirty, every held branch is named with its path and the whole restack is refused. Free siblings are not rebased or pushed. ado-stack does not move a held branch with `git update-ref` or `git branch -f`.
+If another worktree holds a branch and `git status --porcelain` is empty, restack runs `git -C <path> rebase --onto` there and leaves that worktree on the rebased branch. If any holding worktree is dirty, every held branch is named with its path and the whole restack is refused. Free siblings are not rebased or pushed.
 
 After a successful restack the invoking worktree is left on the branch it started on.
 

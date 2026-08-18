@@ -56,14 +56,9 @@ export function planRestackWorktrees(options: {
   return { kind: "proceed", sites };
 }
 
-export function formatHeldWorktreeRefusal(holds: readonly HeldStackBranch[]): string {
-  const listed = holds.map((hold) => `  \`${hold.branch}\`\n    ${hold.worktreePath}`).join("\n");
-  return `Cannot restack because these branches are checked out in other Git worktrees:\n\n${listed}\n\nRestack rebases by checking out each branch. Git refuses that when another worktree already holds it.\n\nRemove those worktrees, or run restack from the worktree that holds the branch.\n\nNo branches were rebased or pushed.`;
-}
-
 export function formatDirtyWorktreeRefusal(holds: readonly HeldStackBranch[]): string {
   const listed = holds.map((hold) => `  \`${hold.branch}\`\n    ${hold.worktreePath}`).join("\n");
-  return `Cannot restack because these worktrees are not ready:\n\n${listed}\n\nCommit or stash local changes, and finish or abort any rebase in those worktrees first. ado-stack will not rebase a dirty worktree, and it will not move a held branch with plumbing.\n\nNo branches were rebased or pushed.`;
+  return `Cannot restack because these worktrees are not ready:\n\n${listed}\n\nCommit or stash local changes, and finish or abort any rebase in those worktrees first.\n\nNo branches were rebased or pushed.`;
 }
 
 export async function restackSitePaths(
