@@ -1,0 +1,25 @@
+name: require-version-bump
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disable Git CRLF conversion
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch the pull request base
+        run: git fetch --depth=1 origin "${{ github.base_ref }}"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Require a greater package.json version
+        run: bun run scripts/require-version-bump.ts --base "origin/${{ github.base_ref }}"
