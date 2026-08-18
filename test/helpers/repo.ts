@@ -59,6 +59,7 @@ export async function runCli(
       ADO_STACK_CONFIG_DIR:
         options.env?.ADO_STACK_CONFIG_DIR ?? join(options.cwd, ".ado-stack-home"),
       ADO_STACK_AUTH_MODE: "pat",
+      ADO_STACK_NO_UPDATE_CHECK: "1",
       ...options.env,
     },
   });

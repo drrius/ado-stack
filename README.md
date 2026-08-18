@@ -27,7 +27,7 @@ irm https://raw.githubusercontent.com/drrius/ado-stack/main/install.ps1 | iex
 
 The installer downloads the latest GitHub Release for your OS (`ado-stack-darwin-arm64`, `ado-stack-darwin-x64`, `ado-stack-linux-x64`, or `ado-stack-windows-x64.exe`), checks SHA256, and installs into a user-writable directory (`~/.local/bin` or `%LOCALAPPDATA%\ado-stack\bin`).
 
-Pin a version with `ADO_STACK_VERSION=v0.1.0`. Override the install directory with `ADO_STACK_INSTALL_DIR`.
+`ado-stack update` does the same replacement later. A TTY session tells you when a newer release exists so you do not have to rerun the curl installer. Pin a version with `ADO_STACK_VERSION=v0.1.0`. Override the install directory with `ADO_STACK_INSTALL_DIR`.
 
 ### From source
 
@@ -63,7 +63,7 @@ ado-stack submit
 
 ## Interactive UI
 
-Run `ado-stack` with no arguments at a terminal to open the interactive UI. The home screen shows the stack forest with PR state, links, and the recommended next step. From there you can create a branch, submit with a preview, restack with a plan and guided conflict recovery, navigate the stack, initialize a repository, and log in with a hidden PAT prompt.
+Run `ado-stack` with no arguments at a terminal to open the interactive UI. The home screen shows the stack forest with PR state, links, and the recommended next step. From there you can create a branch, submit with a preview, restack with a plan and guided conflict recovery, navigate the stack, initialize a repository, log in with a hidden PAT prompt, and install a newer release when one exists.
 
 Scripts and CI keep the argv CLI. A bare `ado-stack` prints help when stdin or stdout is not a TTY. Pass `--no-tui` or set `ADO_STACK_NO_TUI=1` to opt out explicitly. Both surfaces run the same command implementations.
 
@@ -87,6 +87,7 @@ If `schema` squash-merges into `main`, run `ado-stack restack`. The tool rebases
 | `ado-stack up` / `down` | Move to a child or the parent. `up` from a fork requires the child name. |
 | `ado-stack checkout <ref>` | Check out a branch name or PR number. |
 | `ado-stack auth` | Show, store, or clear credentials. |
+| `ado-stack update` | Check GitHub Releases and replace the installed binary when a newer version exists. |
 | `ado-stack config` | Get or set `organization`, `project`, `repository`, `defaultBranch`, `branchPrefix`, `authMode`. |
 | `ado-stack repair` | Rebuild local state when Git and Azure DevOps agree. Names cycles and parent disagreements; does not guess. |
 

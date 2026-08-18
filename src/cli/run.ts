@@ -8,6 +8,7 @@ import { repairCommand } from "../commands/repair.ts";
 import { restackCommand } from "../commands/restack.ts";
 import { statusCommand } from "../commands/status.ts";
 import { submitCommand } from "../commands/submit.ts";
+import { updateCommand } from "../commands/update.ts";
 import { CliError, formatError, isCliError } from "../errors/cli-error.ts";
 import { shouldLaunchTui } from "../tui/mode.ts";
 import { runTui } from "../tui/session.ts";
@@ -48,7 +49,8 @@ export async function run(argv: string[]): Promise<number> {
       log,
       verbose: parsed.flags.verbose,
       debug: parsed.flags.debug,
-      requireGit: parsed.command !== "auth" && parsed.command !== "config",
+      requireGit:
+        parsed.command !== "auth" && parsed.command !== "config" && parsed.command !== "update",
     });
     const exitCode = await dispatch(parsed.command, ctx, parsed.args, parsed.commandFlags);
     return exitCode ?? 0;
@@ -108,6 +110,9 @@ async function dispatch(
       return configCommand(ctx, args, flags);
     case "repair":
       await repairCommand(ctx);
+      return;
+    case "update":
+      await updateCommand(ctx);
       return;
     default: {
       const _exhaustive: never = command;
