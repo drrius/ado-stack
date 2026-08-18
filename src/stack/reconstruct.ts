@@ -58,22 +58,18 @@ export function reconstructForest(options: {
   }
 
   const conflicts: ReconstructConflict[] = [];
+  const chosen: ReconstructPullRequest[] = [];
   for (const [branch, prs] of bySource) {
-    if (prs.length > 1) {
+    const choice = choosePullRequestForSource(prs);
+    if (!choice.ok) {
       conflicts.push({
         kind: "duplicate-source",
         branch,
-        pullRequestIds: prs.map((pr) => pr.id),
+        pullRequestIds: choice.pullRequestIds,
       });
-    }
-  }
-
-  const chosen: ReconstructPullRequest[] = [];
-  for (const [branch, prs] of bySource) {
-    const pr = prs[0];
-    if (!pr || prs.length > 1) {
       continue;
     }
+    const pr = choice.pr;
     const propertyParent = pr.properties?.parent;
     const recordedParent = options.base.branches[branch]?.parent;
     if (propertyParent !== undefined && propertyParent !== pr.targetBranch) {
@@ -222,4 +218,22 @@ function adoptablePullRequests(
     chosen.push(...(bySource.get(branch) ?? []));
   }
   return chosen;
+}
+
+function choosePullRequestForSource(
+  prs: ReconstructPullRequest[],
+): { ok: true; pr: ReconstructPullRequest } | { ok: false; pullRequestIds: number[] } {
+  const active = prs.filter((pr) => pr.status === "active");
+  if (active.length > 1) {
+    return { ok: false, pullRequestIds: active.map((pr) => pr.id) };
+  }
+  const [onlyActive] = active;
+  if (onlyActive) {
+    return { ok: true, pr: onlyActive };
+  }
+  const [only] = prs;
+  if (only && prs.length === 1) {
+    return { ok: true, pr: only };
+  }
+  return { ok: false, pullRequestIds: prs.map((pr) => pr.id) };
 }

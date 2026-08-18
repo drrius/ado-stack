@@ -71,6 +71,7 @@ export async function initCommand(
   let adoMetadataLoaded = false;
   let adoMetadataError: string | undefined;
   let adoMetadataCause: unknown;
+  let rebuiltState: StackState | undefined;
   try {
     const ado = await createAdoClient(ctx, state);
     const repo = await ado.getRepository();
@@ -83,8 +84,7 @@ export async function initCommand(
     const rebuilt = await reconstructFromAdo(ctx, ado, state);
     adoMetadataLoaded = true;
     if (rebuilt.ok) {
-      state = await hydrateForestTips(ctx.git, rebuilt.state);
-      ctx.log.success("Rebuilt stack state from Azure DevOps pull request metadata.");
+      rebuiltState = rebuilt.state;
     } else if (!rebuilt.conflicts.some((conflict) => conflict.kind === "empty")) {
       ctx.log.warn(formatReconstructConflicts(rebuilt.conflicts));
       ctx.log.warn("Left local stack state unchanged instead of guessing parentage.");
@@ -92,6 +92,11 @@ export async function initCommand(
   } catch (error) {
     adoMetadataCause = error;
     adoMetadataError = error instanceof Error ? error.message : String(error);
+  }
+
+  if (rebuiltState) {
+    state = await hydrateForestTips(ctx.git, rebuiltState);
+    ctx.log.success("Rebuilt stack state from Azure DevOps pull request metadata.");
   }
 
   await ctx.stateStore.write(state);

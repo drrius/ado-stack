@@ -157,6 +157,23 @@ describe("reconstructForest", () => {
     });
   });
 
+  test("adopts the active PR when the same source also has a completed PR", () => {
+    const result = reconstructForest({
+      base: base(),
+      pullRequests: [
+        { ...pr(1, "base", "main"), status: "completed" },
+        pr(2, "base", "main"),
+        pr(3, "child", "base"),
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches.base?.pullRequestId).toBe(2);
+    expect(result.state.branches.child?.parent).toBe("base");
+  });
+
   test("does not treat the source tip as lastRestackBase when properties are absent", () => {
     const result = reconstructForest({
       base: base(),
