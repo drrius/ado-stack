@@ -117,6 +117,12 @@ After a successful restack the invoking worktree is left on the branch it starte
 
 A conflict leaves `git rebase` in progress and writes `.git/ado-stack/restack-in-progress.json`. Resolve, `git rebase --continue`, then `ado-stack restack --continue`. `ado-stack restack --abort` aborts the Git rebase and clears the plan. Submitted branches already force-pushed with lease are not rolled back.
 
+## Machine-readable restack
+
+`ado-stack restack --json` prints one JSON object per line on stdout while human messages go to stderr. Events: `plan` (the ordered steps), `step-start`, `step-done`, `conflict` (branch, the worktree path holding the rebase, conflicted files, blocked subtree, untouched siblings), `done`, `aborted`, and `error`. The same flag works with `--continue` and `--abort`. Exit codes are unchanged — a conflict still exits non-zero after emitting the `conflict` event.
+
+`ado-stack restack --status --json` prints a single object with the persisted plan (or `null`), the branch a conflict stopped on, and the live rebase state (in progress or not, worktree path, currently conflicted files). It only reads; nothing is fetched or rewritten. The desktop app is built on these two surfaces.
+
 ## Divergence
 
 If another clone pushed to `B`, `origin/B` no longer matches `lastKnownRemoteTip`. Restack errors with both SHAs and does not push. `--force-with-lease` is a second check, not the only one.
