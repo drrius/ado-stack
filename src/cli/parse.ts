@@ -16,6 +16,7 @@ export type GlobalFlags = {
   version: boolean;
   verbose: boolean;
   debug: boolean;
+  noTui: boolean;
   cwd: string;
 };
 
@@ -46,6 +47,7 @@ export function parseArgv(argv: string[]): ParsedCli {
     version: false,
     verbose: false,
     debug: false,
+    noTui: false,
     cwd: process.cwd(),
   };
   const rest: string[] = [];
@@ -69,6 +71,10 @@ export function parseArgv(argv: string[]): ParsedCli {
     }
     if (arg === "--debug") {
       flags.debug = true;
+      continue;
+    }
+    if (arg === "--no-tui") {
+      flags.noTui = true;
       continue;
     }
     if (arg === "--cwd") {
@@ -101,7 +107,7 @@ export function parseArgv(argv: string[]): ParsedCli {
   if (commandRaw === "help") {
     const helpTarget = commandArgs[0];
     if (helpTarget === undefined) {
-      return { kind: "global-help", flags };
+      return { kind: "global-help", flags: { ...flags, help: true } };
     }
     const helpSpec = getCommandSpec(helpTarget);
     if (!helpSpec) {
@@ -227,6 +233,7 @@ Global options:
   --verbose            Extra progress
   --debug              Git commands and API URLs (tokens redacted)
   --cwd <path>         Run as if started in <path>
+  --no-tui             Never launch the interactive UI
   -h, --help           Show help
   -V, --version        Show version
 
