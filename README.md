@@ -118,6 +118,10 @@ When a restack stops on a conflict, the app can hand resolution to an AI agent a
 
 The app prefers `ado-stack` from `PATH` and falls back to a bundled copy. Installers for macOS, Windows, and Linux are built by the `desktop` workflow on `desktop-v*` tags. See [apps/desktop/README.md](apps/desktop/README.md) for development and details.
 
+## AI agents
+
+Install the [ado-stack skill](skills/ado-stack/SKILL.md) into your repo with `npx skills add drrius/ado-stack`. It teaches Claude Code, Codex, and other AGENTS.md-compatible agents to drive the CLI non-interactively: the create → submit loop, reading state through `status --json --preflight` and `restack --status --json`, the NDJSON events from `restack --json`, the exact conflict-recovery recipe, and the safety rules (no manual force pushes, no destructive git fixes).
+
 ## Workflow
 
 ```text
