@@ -285,9 +285,11 @@ export default function App() {
       };
     }
     const markerTargets = current.files.length > 0 ? current.files : ["."];
+    // Catches begin/end markers with or without a label, diff3 base markers,
+    // and a leftover separator-only ======= line.
     const markers = await runCapture(
       "git",
-      ["grep", "-nE", "^(<{7}|>{7}) ", "--", ...markerTargets],
+      ["grep", "-nE", "^(<{7}( |$)|>{7}( |$)|\\|{7}( |$)|={7}$)", "--", ...markerTargets],
       cwd,
     );
     if (markers.code === 0 && markers.stdout.trim().length > 0) {
@@ -301,13 +303,38 @@ export default function App() {
         diff: "",
       };
     }
+    // Everything must be staged: an unstaged edit would be invisible in the
+    // reviewed diff and can derail the next rebase step.
+    const porcelain = await runCapture("git", ["status", "--porcelain"], cwd);
+    const entries = porcelain.stdout.split("\n").filter((line) => line.length > 0);
+    const unstaged = entries
+      .filter((line) => !line.startsWith("??") && line[1] !== " ")
+      .map((line) => line.slice(3));
+    if (unstaged.length > 0) {
+      return {
+        ...current,
+        phase: "review",
+        validation: {
+          ok: false,
+          message: `Unstaged changes in the worktree — stage or revert them first:\n${unstaged.join("\n")}`,
+        },
+        diff: "",
+      };
+    }
+    const untracked = entries
+      .filter((line) => line.startsWith("??"))
+      .map((line) => line.slice(3));
+    const untrackedNote =
+      untracked.length > 0
+        ? `\n\nNote: untracked files were left in the worktree (they will NOT be committed): ${untracked.join(", ")}`
+        : "";
     const diff = await runCapture("git", ["diff", "--cached"], cwd);
     return {
       ...current,
       phase: "review",
       validation: {
         ok: true,
-        message: "No unresolved conflicts remain. Review the staged resolution below.",
+        message: `No unresolved conflicts remain. Review the staged resolution below — it is everything that will be committed.${untrackedNote}`,
       },
       diff: diff.stdout,
     };
@@ -390,6 +417,23 @@ export default function App() {
       return;
     }
     setConflict({ ...current, phase: "continuing", error: undefined });
+    // The index could have changed since the reviewed diff was produced;
+    // re-validate so only the state the human just saw can be committed.
+    const revalidated = await validateResolution(current);
+    if (!revalidated.validation?.ok) {
+      setConflict({
+        ...revalidated,
+        error: "The worktree changed since validation. Review the updated state before approving.",
+      });
+      return;
+    }
+    if (revalidated.diff !== current.diff) {
+      setConflict({
+        ...revalidated,
+        error: "The staged changes are different from the diff you reviewed. Review again.",
+      });
+      return;
+    }
     const rebase = await runCapture(
       "git",
       ["-c", "core.editor=true", "rebase", "--continue"],
@@ -410,7 +454,7 @@ export default function App() {
       note("Restack finished.");
     }
     await refresh();
-  }, [note, streamRestack, refresh]);
+  }, [note, streamRestack, refresh, validateResolution]);
 
   const abortRestack = useCallback(async () => {
     await streamRestack(["restack", "--abort", "--json"]);
