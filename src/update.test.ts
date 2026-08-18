@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CliError } from "./errors/cli-error.ts";
 import {
   type HttpFetch,
   applyUpdate,
@@ -140,6 +141,27 @@ describe("checkForUpdate", () => {
     expect(forced).toEqual({ kind: "available", current: "0.2.1", latest: "0.2.2" });
   });
 
+  test("expired available cache is revalidated", async () => {
+    const configDir = await tempDir();
+    const tags = ["v0.2.2", "v0.2.3"];
+    const fetchImpl = fakeGithubFetch(() => ({ tag: tags.shift() ?? "v0.2.3" }));
+    await checkForUpdate({
+      current: "0.2.1",
+      configDir,
+      fetch: fetchImpl,
+      disabled: false,
+      now: new Date("2026-08-18T00:00:00.000Z"),
+    });
+    const refreshed = await checkForUpdate({
+      current: "0.2.1",
+      configDir,
+      fetch: fetchImpl,
+      disabled: false,
+      now: new Date("2026-08-19T01:00:00.000Z"),
+    });
+    expect(refreshed).toEqual({ kind: "available", current: "0.2.1", latest: "0.2.3" });
+  });
+
   test("network failure keeps a cached available notice", async () => {
     const configDir = await tempDir();
     await checkForUpdate({
@@ -204,6 +226,59 @@ describe("applyUpdate", () => {
     });
     expect(result).toEqual({ latest: "9.9.9", destPath });
     expect(await readFile(destPath, "utf8")).toBe(payload);
+  });
+
+  test("moves a Windows dest aside before replacing it", async () => {
+    const dir = await tempDir();
+    const destPath = join(dir, "ado-stack.exe");
+    await writeFile(destPath, "old-binary");
+    const payload = "new-windows-bytes";
+    const hash = new Bun.CryptoHasher("sha256").update(payload).digest("hex");
+    await applyUpdate({
+      destPath,
+      version: "9.9.9",
+      platform: "win32",
+      arch: "x64",
+      fetch: fakeGithubFetch(() => ({
+        tag: "v9.9.9",
+        files: {
+          "ado-stack-windows-x64.exe": payload,
+          SHA256SUMS: `${hash}  ado-stack-windows-x64.exe\n`,
+        },
+      })),
+    });
+    expect(await readFile(destPath, "utf8")).toBe(payload);
+    expect(await readFile(`${destPath}.old`, "utf8")).toBe("old-binary");
+  });
+
+  test("replace failures name the platform install script", async () => {
+    const dir = await tempDir();
+    const destPath = join(dir, "ado-stack.exe");
+    await writeFile(destPath, "old-binary");
+    await mkdir(`${destPath}.old`);
+    await writeFile(join(`${destPath}.old`, "blocker"), "held");
+    const payload = "new-windows-bytes";
+    const hash = new Bun.CryptoHasher("sha256").update(payload).digest("hex");
+    try {
+      await applyUpdate({
+        destPath,
+        version: "9.9.9",
+        platform: "win32",
+        arch: "x64",
+        fetch: fakeGithubFetch(() => ({
+          tag: "v9.9.9",
+          files: {
+            "ado-stack-windows-x64.exe": payload,
+            SHA256SUMS: `${hash}  ado-stack-windows-x64.exe\n`,
+          },
+        })),
+      });
+      throw new Error("expected replace to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CliError);
+      expect(String(error)).toContain("Could not replace");
+      expect((error as CliError).hint).toContain("install.ps1");
+    }
   });
 
   test("refuses a checksum mismatch", async () => {

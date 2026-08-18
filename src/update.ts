@@ -1,4 +1,4 @@
-import { chmod, rename } from "node:fs/promises";
+import { chmod, rename, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { CliError } from "./errors/cli-error.ts";
 import { GITHUB_REPOSITORY, VERSION } from "./version.ts";
@@ -116,7 +116,7 @@ export async function checkForUpdate(options: {
     const notice = noticeFromVersions(options.current, cached.latest);
     const ageMs = now.getTime() - Date.parse(cached.checkedAt);
     const fresh = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < ttlMs;
-    if (notice.kind === "available" || fresh) {
+    if (fresh) {
       return notice;
     }
   }
@@ -172,8 +172,32 @@ export async function applyUpdate(options: {
   const staged = `${options.destPath}.new`;
   await Bun.write(staged, bytes);
   await chmod(staged, 0o755);
-  await rename(staged, options.destPath);
+  await replaceInstalledBinary({
+    destPath: options.destPath,
+    staged,
+    platform: options.platform ?? process.platform,
+  });
   return { latest, destPath: options.destPath };
+}
+
+async function replaceInstalledBinary(options: {
+  destPath: string;
+  staged: string;
+  platform: NodeJS.Platform;
+}): Promise<void> {
+  try {
+    if (options.platform === "win32" && (await Bun.file(options.destPath).exists())) {
+      const previous = `${options.destPath}.old`;
+      await rm(previous, { force: true });
+      await rename(options.destPath, previous);
+    }
+    await rename(options.staged, options.destPath);
+  } catch (error) {
+    throw new CliError("Could not replace the installed ado-stack binary.", {
+      hint: `Install manually:\n  ${installHint(options.platform)}`,
+      cause: error,
+    });
+  }
 }
 
 function parts(version: string): [number, number, number] | undefined {

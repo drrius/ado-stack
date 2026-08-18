@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CliError } from "../errors/cli-error.ts";
 import type { Logger } from "../ui/log.ts";
-import type { HttpFetch } from "../update.ts";
+import { type HttpFetch, installHint } from "../update.ts";
 import { VERSION } from "../version.ts";
 import { updateCommand } from "./update.ts";
 
@@ -31,7 +31,7 @@ describe("updateCommand", () => {
       expect(error).toBeInstanceOf(CliError);
       expect(String(error)).toContain("running from source");
       expect(String(error)).toContain("9.9.9");
-      expect((error as CliError).hint).toContain("install.sh");
+      expect((error as CliError).hint).toContain(installHint());
     }
     expect(lines).toEqual([]);
   });
