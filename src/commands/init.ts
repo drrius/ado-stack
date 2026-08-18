@@ -98,8 +98,6 @@ export async function initCommand(
   if (rebuiltState) {
     state = await hydrateForestTips(ctx.git, rebuiltState);
     ctx.log.success("Rebuilt stack state from Azure DevOps pull request metadata.");
-  }
-  if (adoMetadataLoaded) {
     state = await reconcileCompletedMerges(ctx, state);
   }
 
