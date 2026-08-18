@@ -130,9 +130,13 @@ function refusalText(refusal: ReconcileRefusal, prefix: string): string {
   switch (refusal.reason) {
     case "source-mismatch":
       return `Skipped absorbing PR #${refusal.pullRequestId} \`${branchLabel}\`: source is \`${formatBranch(refusal.sourceBranch, prefix)}\`, expected \`${branchLabel}\`.`;
+    case "untracked-target":
+      return `Skipped absorbing PR #${refusal.pullRequestId} \`${branchLabel}\`: target \`${formatBranch(refusal.target, prefix)}\` is not trunk and is not tracked.`;
+    case "cyclic-target":
+      return `Skipped absorbing PR #${refusal.pullRequestId} \`${branchLabel}\`: target \`${formatBranch(refusal.target, prefix)}\` is ${refusal.target === refusal.branch ? "the same branch" : "a descendant"}.`;
     default: {
-      const _exhaustive: never = refusal.reason;
-      throw new Error(`Unhandled reconcile refusal ${String(_exhaustive)}`);
+      const _exhaustive: never = refusal;
+      throw new Error(`Unhandled reconcile refusal ${JSON.stringify(_exhaustive)}`);
     }
   }
 }

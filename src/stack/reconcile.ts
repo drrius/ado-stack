@@ -1,6 +1,6 @@
 import { CliError } from "../errors/cli-error.ts";
 import type { StackState } from "../state/schema.ts";
-import { childrenOf, stackOrder } from "./graph.ts";
+import { childrenOf, descendantsOf, stackOrder } from "./graph.ts";
 import type { PullRequestSnapshot } from "./restack.ts";
 
 export type LocalBranchDisposition =
@@ -20,12 +20,25 @@ export type MergeAbsorption = {
   local: LocalBranchDisposition;
 };
 
-export type ReconcileRefusal = {
-  branch: string;
-  pullRequestId: number;
-  reason: "source-mismatch";
-  sourceBranch: string;
-};
+export type ReconcileRefusal =
+  | {
+      branch: string;
+      pullRequestId: number;
+      reason: "source-mismatch";
+      sourceBranch: string;
+    }
+  | {
+      branch: string;
+      pullRequestId: number;
+      reason: "untracked-target";
+      target: string;
+    }
+  | {
+      branch: string;
+      pullRequestId: number;
+      reason: "cyclic-target";
+      target: string;
+    };
 
 export type ReconcilePlan = {
   absorptions: MergeAbsorption[];
@@ -70,6 +83,16 @@ export function planCompletedMerges(options: {
       start: snapshot.targetBranch,
       pullRequests: options.pullRequests,
     });
+    const unsafe = unsafeAbsorptionTarget(options.state, branch, into);
+    if (unsafe !== undefined) {
+      refusals.push({
+        branch,
+        pullRequestId,
+        reason: unsafe,
+        target: into,
+      });
+      continue;
+    }
     absorptions.push({
       branch,
       pullRequestId,
@@ -125,6 +148,23 @@ function livingMergeBase(options: {
     parent = pr.targetBranch;
   }
   return parent;
+}
+
+function unsafeAbsorptionTarget(
+  state: StackState,
+  branch: string,
+  into: string,
+): "untracked-target" | "cyclic-target" | undefined {
+  if (into === state.defaultBranch) {
+    return undefined;
+  }
+  if (into === branch || descendantsOf(state, branch).includes(into)) {
+    return "cyclic-target";
+  }
+  if (!(into in state.branches)) {
+    return "untracked-target";
+  }
+  return undefined;
 }
 
 function mergeChildren(state: StackState, branch: string): MergeChild[] {

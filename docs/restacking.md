@@ -65,7 +65,7 @@ Same operation. `oldBase` is still the recorded parent tip, not "whatever `main`
 
 Azure DevOps marks a stacked PR completed. Detection is that PR status, not the commit shape. `status`, `init`, `repair`, and `restack` all run the same absorption before any rebase. The user does not run a separate repair command.
 
-A completed parent with several children re-parents every direct child onto the living base. That base is the completed PR's target, then any further completed targets until a living branch. A stale local parent is ignored. A source that does not match the tracked branch is refused and named. Grandchildren keep their own parents. Each child's PR is retargeted to the new base when it is not already there. The merged row is dropped from `state.json` immediately, then written, so a crash mid-forest does not leave a missing parent.
+A completed parent with several children re-parents every direct child onto the living base. That base is the completed PR's target, then any further completed targets until a living branch. A stale local parent is ignored. A source that does not match the tracked branch, a target that is not trunk or tracked, or a target that is a descendant is refused and named. Grandchildren keep their own parents. Each child's PR is retargeted to the new base when it is not already there. The merged row is dropped from `state.json` immediately, then written, so a crash mid-forest does not leave a missing parent.
 
 `init` and `repair` absorb only after a successful reconstruct. A refused rebuild leaves `state.json` unchanged. `status` skips absorption and still prints local rows when a tracked PR cannot be loaded. `restack` still fails closed on an incomplete snapshot set.
 

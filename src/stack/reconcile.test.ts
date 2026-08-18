@@ -373,6 +373,50 @@ describe("planCompletedMerges", () => {
     expect(next.branches.C?.parent).toBe("main");
   });
 
+  test("an untracked completed PR target is a refusal, not an absorption", () => {
+    const state = forestState();
+    const pullRequests = forestSnapshots();
+    pullRequests.set(1982, snapshot(1982, "completed", PARENT, "release"));
+    const plan = planCompletedMerges({
+      state,
+      pullRequests,
+      facts: facts({ contained: [[PARENT, "release"]] }),
+    });
+    expect(plan.absorptions).toEqual([]);
+    expect(plan.refusals).toEqual([
+      {
+        branch: PARENT,
+        pullRequestId: 1982,
+        reason: "untracked-target",
+        target: "release",
+      },
+    ]);
+    expect(applyAll(state, plan).branches[PARENT]?.parent).toBe("main");
+    expect(applyAll(state, plan).branches[CHILD_1986]?.parent).toBe(PARENT);
+  });
+
+  test("a completed PR targeting a descendant is a refusal, not an absorption", () => {
+    const state = forestState();
+    const pullRequests = forestSnapshots();
+    pullRequests.set(1982, snapshot(1982, "completed", PARENT, GRAND_1989));
+    const plan = planCompletedMerges({
+      state,
+      pullRequests,
+      facts: facts({ contained: [[PARENT, GRAND_1989]] }),
+    });
+    expect(plan.absorptions).toEqual([]);
+    expect(plan.refusals).toEqual([
+      {
+        branch: PARENT,
+        pullRequestId: 1982,
+        reason: "cyclic-target",
+        target: GRAND_1989,
+      },
+    ]);
+    expect(applyAll(state, plan).branches[CHILD_1986]?.parent).toBe(PARENT);
+    expect(applyAll(state, plan).branches[GRAND_1989]?.parent).toBe(CHILD_1986);
+  });
+
   test("a source mismatch is a refusal, not an absorption", () => {
     const state = forestState();
     const pullRequests = forestSnapshots();
