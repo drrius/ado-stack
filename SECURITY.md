@@ -32,5 +32,3 @@ It does not discard a dirty working tree.
 ## Supply chain
 
 Release binaries are published with `SHA256SUMS`. `install.sh` and `install.ps1` refuse to install on checksum mismatch.
-
-While the GitHub repository is private, unauthenticated download URLs will 404. Use GitHub CLI with an account that can read the repo.

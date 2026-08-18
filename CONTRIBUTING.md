@@ -44,3 +44,16 @@ Behavior changes to restack or state should update `docs/restacking.md` and `doc
 ## Patches
 
 Keep diffs small. Linear stacks only. No GitHub/GitLab support, telemetry, or automatic conflict resolution in this MVP.
+
+## Releasing
+
+`install.sh` downloads binaries from GitHub Releases. A public repo with no published release prints `release not found`.
+
+Bump `package.json` `version`, then tag that commit:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The `release` workflow compiles binaries, writes `SHA256SUMS`, and publishes the GitHub Release.

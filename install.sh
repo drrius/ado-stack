@@ -1,7 +1,6 @@
 #!/bin/sh
 # Install ado-stack from GitHub Releases.
-# Public repos: curl -fsSL https://raw.githubusercontent.com/drrius/ado-stack/main/install.sh | sh
-# Private repos: authenticate first (gh auth login), then run this script locally.
+# curl -fsSL https://raw.githubusercontent.com/drrius/ado-stack/main/install.sh | sh
 set -eu
 
 REPO="${ADO_STACK_GITHUB_REPO:-drrius/ado-stack}"
@@ -34,26 +33,44 @@ asset="ado-stack-${target}"
 tmpdir=$(mktemp -d)
 trap 'rm -rf "${tmpdir}"' EXIT
 
+download_failed() {
+  echo "No GitHub Release found for ${REPO} (${VERSION})." >&2
+  echo "Publish a v* tag to create one, then retry:" >&2
+  echo "  git tag vX.Y.Z && git push origin vX.Y.Z" >&2
+  echo "If the repository is private, run gh auth login and retry." >&2
+  exit 1
+}
+
+download_with_gh() {
+  name=$1
+  if [ "${VERSION}" = "latest" ]; then
+    gh release download --repo "${REPO}" --pattern "${name}" --dir "${tmpdir}"
+  else
+    gh release download "${VERSION}" --repo "${REPO}" --pattern "${name}" --dir "${tmpdir}"
+  fi
+}
+
 download() {
   url=$1
   dest=$2
-  if command -v gh >/dev/null 2>&1; then
-    if [ "${VERSION}" = "latest" ]; then
-      gh release download --repo "${REPO}" --pattern "$(basename "${url}")" --dir "${tmpdir}"
-    else
-      gh release download "${VERSION}" --repo "${REPO}" --pattern "$(basename "${url}")" --dir "${tmpdir}"
-    fi
-    return
-  fi
+  name=$(basename "${url}")
+
   if command -v curl >/dev/null 2>&1; then
-    if ! curl -fsSL "${url}" -o "${dest}"; then
-      echo "Download failed. If ${REPO} is private, install GitHub CLI, run gh auth login, and retry." >&2
-      exit 1
+    if curl -fsSL "${url}" -o "${dest}"; then
+      return
     fi
-    return
   fi
-  echo "Need curl or gh to download ${url}" >&2
-  exit 1
+
+  if command -v gh >/dev/null 2>&1; then
+    if download_with_gh "${name}"; then
+      return
+    fi
+  elif ! command -v curl >/dev/null 2>&1; then
+    echo "Need curl or gh to download ${url}" >&2
+    exit 1
+  fi
+
+  download_failed
 }
 
 if [ "${VERSION}" = "latest" ]; then
