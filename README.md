@@ -110,6 +110,14 @@ If the binary is missing, you get an error that names `adoStack.command`. If the
 
 Rebuild the VSIX after changing the extension with `bun run extension:package`.
 
+## Desktop app
+
+`apps/desktop` is a Tauri app over the same CLI: the stack forest with PR state and conflict preflight, one-click init / create / submit / restack with streamed output, and PAT login (the token is piped to `ado-stack auth login`, stored by the CLI only).
+
+When a restack stops on a conflict, the app can hand resolution to an AI agent already installed on your machine — Claude Code (`claude`) or Codex (`codex`), discovered on `PATH`. The agent runs headless in the worktree that holds the rebase and may only resolve conflict markers and `git add` the results. The app then validates that no conflicts or markers remain and shows you the staged diff; only after you approve does it run `git rebase --continue` and `ado-stack restack --continue`, so pushes and PR retargeting stay inside the CLI's safety rules. Manual resolution follows the same validate → review → continue loop, and both agents are optional.
+
+The app prefers `ado-stack` from `PATH` and falls back to a bundled copy. Installers for macOS, Windows, and Linux are built by the `desktop` workflow on `desktop-v*` tags. See [apps/desktop/README.md](apps/desktop/README.md) for development and details.
+
 ## Workflow
 
 ```text
@@ -126,7 +134,7 @@ If `schema` squash-merges into `main`, run `ado-stack restack`. The tool rebases
 | `ado-stack create <name>` | Create a stack branch from `HEAD`. If `HEAD` already has children, the new branch is a sibling. Honors `branchPrefix`. |
 | `ado-stack submit` | Push branches in parent-before-child order and create or update PRs. Writes namespaced PR properties and a managed description block. |
 | `ado-stack status` | Show the stack forest, one line per branch. `--json` prints the same model. `--web` writes `.git/ado-stack/status.html`, runs a restack conflict preflight, and opens the file. See [Status views](#status-views). |
-| `ado-stack restack` | Rebase each layer onto its live parent, depth-first from each root. `--continue` / `--abort` after conflicts. |
+| `ado-stack restack` | Rebase each layer onto its live parent, depth-first from each root. `--continue` / `--abort` after conflicts. `--json` streams NDJSON events (plan, step-start, step-done, conflict with worktree path and files, done, aborted, error) for tooling; human messages move to stderr. `--status [--json]` reads the persisted plan and live rebase state without changing anything. |
 | `ado-stack up` / `down` | Move to a child or the parent. `up` from a fork requires the child name. |
 | `ado-stack checkout <ref>` | Check out a branch name or PR number. |
 | `ado-stack auth` | Show, store, or clear credentials. |

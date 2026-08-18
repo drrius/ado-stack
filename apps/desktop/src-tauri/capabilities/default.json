@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window capabilities: core events, folder picker, and opening PR links in the browser. Process spawning goes through the app's own allowlisted Rust commands, not a shell plugin.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default", "opener:default", "opener:allow-open-url"]
+}

@@ -309,6 +309,11 @@ export class GitRepo {
     await this.run(["rebase", "--abort"]);
   }
 
+  async conflictedFiles(): Promise<string[]> {
+    const out = await this.text(["diff", "--name-only", "--diff-filter=U"]);
+    return out.length === 0 ? [] : out.split("\n").filter((line) => line.length > 0);
+  }
+
   async continueRebase(): Promise<void> {
     await this.run(["-c", "core.editor=true", "rebase", "--continue"]);
   }
