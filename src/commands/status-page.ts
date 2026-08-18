@@ -224,6 +224,9 @@ h1 {
 }
 .pre {
   margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11.5px;
   color: var(--muted);
 }
@@ -515,7 +518,9 @@ function card(node) {
   const label = preflightLabel(node);
   if (label) {
     const kind = preflight.kind === "conflicts" ? "pre-conflict" : preflight.kind === "error" ? "pre-error" : "pre-clean";
-    root.appendChild(el("div", "pre " + kind, label));
+    const row = el("div", "pre " + kind, label);
+    row.title = label;
+    root.appendChild(row);
   }
   if (preflight && preflight.kind === "conflicts") {
     const files = el("div", "files");
