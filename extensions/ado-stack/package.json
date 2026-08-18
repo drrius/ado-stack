@@ -2,7 +2,7 @@
   "name": "ado-stack",
   "displayName": "ado-stack",
   "description": "Stacked pull requests for Azure DevOps. A view over the ado-stack CLI.",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "publisher": "drrius",
   "private": true,
   "license": "MIT",

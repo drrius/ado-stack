@@ -1,6 +1,12 @@
 import * as vscode from "vscode";
 import { AdoStackCliError, classifyCliFailure, runAdoStack } from "./cli";
-import { type StatusJson, parseStatusJson, stackPosition } from "./model";
+import {
+  type StatusJson,
+  checkoutCandidates,
+  childrenForUp,
+  parseStatusJson,
+  stackPosition,
+} from "./model";
 import { type StackTreeItem, StackTreeProvider } from "./tree";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -29,7 +35,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "ado-stack.checkout",
       async (target?: string | StackTreeItem) => {
-        const branch = typeof target === "string" ? target : target?.node.branch;
+        const fromTree = typeof target === "string" ? target : target?.node.branch;
+        const branch = fromTree ?? (await pickCheckoutBranch());
         if (!branch) {
           return;
         }
@@ -43,7 +50,11 @@ export function activate(context: vscode.ExtensionContext): void {
       await runAndRefresh(["submit"], refresh);
     }),
     vscode.commands.registerCommand("ado-stack.up", async () => {
-      await runAndRefresh(["up"], refresh);
+      const args = await upCommandArgs();
+      if (!args) {
+        return;
+      }
+      await runAndRefresh(args, refresh);
     }),
     vscode.commands.registerCommand("ado-stack.down", async () => {
       await runAndRefresh(["down"], refresh);
@@ -78,6 +89,41 @@ async function runAndRefresh(args: string[], refresh: () => Promise<void>): Prom
     await refresh();
   } catch (error) {
     await showCliError(error);
+  }
+}
+
+async function pickCheckoutBranch(): Promise<string | undefined> {
+  try {
+    const model = await loadForest();
+    const picked = await vscode.window.showQuickPick(
+      checkoutCandidates(model).map((branch) => ({ label: branch })),
+      { placeHolder: "Checkout branch" },
+    );
+    return picked?.label;
+  } catch (error) {
+    await showCliError(error);
+    return undefined;
+  }
+}
+
+async function upCommandArgs(): Promise<string[] | undefined> {
+  try {
+    const model = await loadForest();
+    const children = childrenForUp(model);
+    if (children.length <= 1) {
+      return ["up"];
+    }
+    const picked = await vscode.window.showQuickPick(
+      children.map((node) => ({
+        label: node.branch,
+        description: node.title ?? undefined,
+      })),
+      { placeHolder: "Move up to which child?" },
+    );
+    return picked ? ["up", picked.label] : undefined;
+  } catch (error) {
+    await showCliError(error);
+    return undefined;
   }
 }
 

@@ -47,7 +47,7 @@ export function classifyCliFailure(result: CliResult): AdoStackCliError {
       result,
     );
   }
-  if (/conflict|rebase/i.test(text)) {
+  if (/rebase/i.test(text) || /Git reported a conflict/i.test(text)) {
     return new AdoStackCliError(
       "conflict",
       `${cliMessage(result)}\n\nThe rebase was left in place. Resolve the conflicts in the editor, then run ado-stack restack --continue.`,

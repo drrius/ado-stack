@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { flattenForest, parseStatusJson, stackPosition } from "./model.ts";
+import {
+  checkoutCandidates,
+  childrenForUp,
+  flattenForest,
+  parseStatusJson,
+  stackPosition,
+} from "./model.ts";
 
 const sample = {
   defaultBranch: "main",
@@ -54,6 +60,27 @@ describe("extension status model", () => {
       kind: "conflicts",
       files: ["file.txt"],
     });
+  });
+
+  test("lists checkout targets and children at a fork", () => {
+    const model = parseStatusJson(JSON.stringify(sample));
+    expect(checkoutCandidates(model)).toEqual(["main", "A", "B"]);
+    expect(childrenForUp(model).map((node) => node.branch)).toEqual([]);
+
+    const atParent = parseStatusJson(JSON.stringify({ ...sample, currentBranch: "A" }));
+    expect(childrenForUp(atParent).map((node) => node.branch)).toEqual(["B"]);
+
+    const forked = parseStatusJson(
+      JSON.stringify({
+        ...sample,
+        currentBranch: "main",
+        forest: [
+          sample.forest[0],
+          { ...sample.forest[0], branch: "C", parent: "main", current: false, children: [] },
+        ],
+      }),
+    );
+    expect(childrenForUp(forked).map((node) => node.branch)).toEqual(["A", "C"]);
   });
 
   test("rejects output that is not a forest", () => {

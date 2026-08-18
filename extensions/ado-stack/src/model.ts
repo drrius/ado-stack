@@ -62,6 +62,20 @@ export function flattenForest(forest: StatusJsonNode[]): StatusJsonNode[] {
   return rows;
 }
 
+export function checkoutCandidates(model: StatusJson): string[] {
+  return [model.defaultBranch, ...flattenForest(model.forest).map((node) => node.branch)];
+}
+
+export function childrenForUp(model: StatusJson): StatusJsonNode[] {
+  if (model.currentBranch === model.defaultBranch) {
+    return model.forest;
+  }
+  const current = flattenForest(model.forest).find(
+    (node) => node.current || node.branch === model.currentBranch,
+  );
+  return current?.children ?? [];
+}
+
 export function stackPosition(model: StatusJson): {
   current: StatusJsonNode | undefined;
   index: number;
