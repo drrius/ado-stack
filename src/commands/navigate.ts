@@ -1,6 +1,7 @@
 import { CliError } from "../errors/cli-error.ts";
 import { looksLikePrNumber, parsePrNumber, resolveBranchArg } from "../stack/names.ts";
 import { downBranch, upBranch } from "../stack/navigation.ts";
+import { formatBranch } from "../ui/format.ts";
 import { type AppContext, createAdoClient, fromRefsHeads, requireState } from "./context.ts";
 
 export async function upCommand(ctx: AppContext): Promise<void> {
@@ -33,7 +34,7 @@ export async function checkoutCommand(ctx: AppContext, args: string[]): Promise<
       await ctx.git.createBranch(branch, `${state.remoteName}/${branch}`);
     }
     await ctx.git.checkout(branch);
-    ctx.log.success(`Checked out ${branch} (PR #${id}).`);
+    ctx.log.success(`Checked out ${formatBranch(branch, ctx.config.branchPrefix)} (PR #${id}).`);
     return;
   }
   const known = [state.defaultBranch, ...Object.keys(state.branches)];
@@ -47,7 +48,7 @@ export async function checkoutCommand(ctx: AppContext, args: string[]): Promise<
     }
   }
   await ctx.git.checkout(branch);
-  ctx.log.success(`Checked out ${branch}.`);
+  ctx.log.success(`Checked out ${formatBranch(branch, ctx.config.branchPrefix)}.`);
 }
 
 async function move(
@@ -63,5 +64,5 @@ async function move(
   await ctx.git.requireCleanTrackedTree(action);
   const next = pick(state, current);
   await ctx.git.checkout(next);
-  ctx.log.success(`Checked out ${next}.`);
+  ctx.log.success(`Checked out ${formatBranch(next, ctx.config.branchPrefix)}.`);
 }

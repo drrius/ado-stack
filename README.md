@@ -60,7 +60,7 @@ At runtime you need Git and Azure DevOps access. The compiled binary does not ne
 ## Quickstart
 
 ```bash
-ado-stack auth
+ado-stack auth login
 ado-stack init
 
 ado-stack create schema
@@ -121,7 +121,7 @@ Supported sources, in order for `authMode=auto`:
 4. A `credentials.json` file in the user config directory (mode 0600), written by `ado-stack auth login`
 5. `az account get-access-token` for Azure DevOps (`499b84ac-1321-427f-aa17-267ca6975798`)
 
-`ado-stack auth login` reads the PAT from those environment variables or from stdin. Do not pass the token on the command line.
+`ado-stack auth login` reads the PAT from those environment variables first. Without one, it prompts for the PAT in a terminal or reads it from stdin when piped. Do not pass the token on the command line.
 
 Debug logs redact `Authorization` headers, bearer tokens, and PAT-like values.
 

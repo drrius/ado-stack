@@ -6,7 +6,7 @@ describe("status sync flags", () => {
   test("reports local/remote diverge from the live branch tip", async () => {
     const repo = await createTempRepo();
     try {
-      await runCli(
+      const initialized = await runCli(
         [
           "init",
           "--organization",
@@ -18,6 +18,11 @@ describe("status sync flags", () => {
         ],
         { cwd: repo.dir },
       );
+      expect(initialized.exitCode).toBe(0);
+      expect(initialized.stdout).toContain("Wrote local ado-stack state");
+      expect(initialized.stdout).toContain("Next: ado-stack auth login");
+      expect(initialized.stdout).not.toContain("Initialized ado-stack");
+      expect(initialized.stderr).toContain("warning: Azure DevOps metadata was not loaded");
       await runCli(["create", "A"], { cwd: repo.dir });
       const submitted = await writeCommit(repo.git, "a.txt", "one\n", "A1");
       const state = (await Bun.file(`${repo.dir}/.git/ado-stack/state.json`).json()) as StackState;
@@ -32,6 +37,11 @@ describe("status sync flags", () => {
       const status = await runCli(["status"], { cwd: repo.dir });
       expect(status.exitCode).toBe(0);
       expect(status.stdout).toContain("local/remote diverge");
+      expect(status.stdout).toContain("Not authenticated to Azure DevOps.");
+      expect(status.stdout).toContain("Next: ado-stack auth login");
+      const row = status.stdout.split("\n").find((line) => line.includes("#9"));
+      expect(row).toContain("UNKNOWN");
+      expect(row).not.toContain("LOCAL");
     } finally {
       await repo.cleanup();
     }

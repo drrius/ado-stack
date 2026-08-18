@@ -17,13 +17,13 @@ import {
   resolveOntoSha,
 } from "../stack/restack.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
+import { formatBranch } from "../ui/format.ts";
 import {
   type AppContext,
-  createAdoClient,
   fromRefsHeads,
-  maybeAdoClient,
   refsHeads,
   requireState,
+  resolveAdoAccess,
 } from "./context.ts";
 
 export async function restackCommand(
@@ -135,10 +135,16 @@ async function runPlan(
     await ctx.stateStore.write(current);
     plan = markStep(plan, step.branch, "done");
     await ctx.stateStore.writeRestackPlan(plan);
-    ctx.log.success(`Restacked ${step.branch} onto ${step.onto}`);
+    ctx.log.success(
+      `Restacked ${formatBranch(step.branch, ctx.config.branchPrefix)} onto ${formatBranch(step.onto, ctx.config.branchPrefix)}`,
+    );
   }
   await ctx.stateStore.clearRestackPlan();
-  ctx.log.info(`Stack restacked: ${stackOrder(current).join(" → ")}`);
+  ctx.log.info(
+    `Stack restacked: ${stackOrder(current)
+      .map((branch) => formatBranch(branch, ctx.config.branchPrefix))
+      .join(" → ")}`,
+  );
 }
 
 async function pushRewritten(ctx: AppContext, state: StackState, step: RestackStep): Promise<void> {
@@ -180,11 +186,13 @@ async function retargetIfNeeded(
   if (!record?.pullRequestId) {
     return;
   }
-  const ado = await maybeAdoClient(ctx, state);
-  if (!ado) {
-    ctx.log.warn(`Skipped PR retarget for ${step.branch}; Azure DevOps is unavailable.`);
-    return;
+  const access = await resolveAdoAccess(ctx, state);
+  if (access.status === "unavailable") {
+    throw new CliError(
+      `${access.message}\n\nAzure DevOps access is required to retarget pull requests safely during restack.`,
+    );
   }
+  const ado = access.client;
   const pr = await ado.getPullRequest(record.pullRequestId);
   if (pr.status !== "active") {
     throw new CliError(
@@ -222,7 +230,9 @@ async function retargetIfNeeded(
       ),
     );
   }
-  ctx.log.success(`PR #${pr.pullRequestId} ${step.branch} → ${step.retargetPrTo}`);
+  ctx.log.success(
+    `PR #${pr.pullRequestId} ${formatBranch(step.branch, ctx.config.branchPrefix)} → ${formatBranch(step.retargetPrTo, ctx.config.branchPrefix)}`,
+  );
 }
 
 async function loadSnapshots(
@@ -230,16 +240,24 @@ async function loadSnapshots(
   state: StackState,
 ): Promise<Map<number, PullRequestSnapshot>> {
   const snapshots = new Map<number, PullRequestSnapshot>();
-  let ado: Awaited<ReturnType<typeof createAdoClient>> | undefined;
-  try {
-    ado = await createAdoClient(ctx, state);
-  } catch {
-    ado = undefined;
+  const branches = stackOrder(state);
+  const pullRequestIds = branches.flatMap((branch) => {
+    const id = state.branches[branch]?.pullRequestId;
+    return id === undefined ? [] : [id];
+  });
+  const access = await resolveAdoAccess(ctx, state);
+  if (access.status === "unavailable") {
+    if (pullRequestIds.length === 0) {
+      ctx.log.debug(`${access.message} Restack has no pull request state to resolve.`);
+      return snapshots;
+    }
+    ctx.log.warn(access.message);
+    throw new CliError(
+      "Azure DevOps authentication is required to restack safely after merges.\n\nRun `ado-stack auth login`, then retry `ado-stack restack`.",
+    );
   }
-  if (!ado) {
-    return snapshots;
-  }
-  for (const branch of stackOrder(state)) {
+  const ado = access.client;
+  for (const branch of branches) {
     const id = state.branches[branch]?.pullRequestId;
     if (id === undefined) {
       continue;
@@ -252,8 +270,11 @@ async function loadSnapshots(
         sourceBranch: fromRefsHeads(pr.sourceRefName),
         targetBranch: fromRefsHeads(pr.targetRefName),
       });
-    } catch {
-      ctx.log.debug(`Could not load PR #${id} during restack planning`);
+    } catch (error) {
+      throw new CliError(
+        `Could not load PR #${id} from Azure DevOps.\n\nRestack requires complete pull request state to handle merged parents safely.`,
+        { cause: error },
+      );
     }
   }
   return snapshots;

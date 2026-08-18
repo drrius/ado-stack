@@ -7,9 +7,10 @@ import { encodeStackProperties, propertyPatches } from "../ado/properties.ts";
 import type { AdoPullRequest } from "../ado/types.ts";
 import { CliError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
-import { displayName } from "../stack/names.ts";
 import { assertSafeRewrite } from "../stack/restack.ts";
 import type { StackState } from "../state/schema.ts";
+import { formatBranch, formatStackPrChain, pullRequestWebUrl } from "../ui/format.ts";
+import { logNext } from "../ui/next.ts";
 import { type AppContext, createAdoClient, refsHeads, requireState } from "./context.ts";
 
 export async function submitCommand(
@@ -66,9 +67,11 @@ export async function submitCommand(
           });
         }
       }
-      ctx.log.success(`${displayName(branch, ctx.config.branchPrefix)} pushed`);
+      ctx.log.success(`${formatBranch(branch, ctx.config.branchPrefix)} pushed`);
     } else {
-      ctx.log.verbose(`${branch} already up to date on ${state.remoteName}`);
+      ctx.log.verbose(
+        `${formatBranch(branch, ctx.config.branchPrefix)} already up to date on ${state.remoteName}`,
+      );
     }
     record.lastKnownRemoteTip = localTip;
     record.lastSubmittedTip = localTip;
@@ -102,7 +105,7 @@ export async function submitCommand(
     record.pullRequestId = pr.pullRequestId;
     submitted.push({ branch, pr });
     ctx.log.success(
-      `PR #${pr.pullRequestId} ${displayName(branch, ctx.config.branchPrefix)} → ${displayName(record.parent, ctx.config.branchPrefix)}`,
+      `PR #${pr.pullRequestId} ${formatBranch(branch, ctx.config.branchPrefix)} → ${formatBranch(record.parent, ctx.config.branchPrefix)} ${pullRequestWebUrl(state, pr.pullRequestId)}`,
     );
   }
 
@@ -145,8 +148,9 @@ export async function submitCommand(
   await ctx.stateStore.write(state);
   ctx.log.info("");
   ctx.log.info(
-    `Stack submitted:\n${submitted.map(({ pr }) => `#${pr.pullRequestId}`).join(" → ")}`,
+    `Stack submitted: ${formatStackPrChain(submitted.map(({ pr }) => pr.pullRequestId))}`,
   );
+  logNext(ctx.log, "review and merge the bottom PR in Azure DevOps, then ado-stack restack");
 }
 
 async function defaultTitle(options: {
@@ -170,6 +174,6 @@ async function defaultTitle(options: {
   try {
     return (await options.git.getCommit(options.branch)).subject;
   } catch {
-    return displayName(options.branch, options.prefix);
+    return formatBranch(options.branch, options.prefix);
   }
 }

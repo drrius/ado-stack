@@ -1,0 +1,171 @@
+export type CommandName =
+  | "init"
+  | "create"
+  | "submit"
+  | "status"
+  | "restack"
+  | "up"
+  | "down"
+  | "checkout"
+  | "auth"
+  | "config"
+  | "repair"
+  | "help"
+  | "version";
+
+export type FlagSpec =
+  | { name: string; kind: "boolean" }
+  | { name: string; kind: "string"; valueName: string };
+
+export type CommandGroup = "setup" | "daily" | "recovery";
+
+export type CommandSpec = {
+  name: Exclude<CommandName, "help" | "version">;
+  group: CommandGroup;
+  summary: string;
+  usage: string[];
+  detail: string;
+  positionals?: Array<{ name: string; required: boolean }>;
+  flags: FlagSpec[];
+};
+
+export const COMMAND_SPECS: CommandSpec[] = [
+  {
+    name: "auth",
+    group: "setup",
+    summary: "Show, store, or clear Azure DevOps credentials",
+    usage: ["ado-stack auth", "ado-stack auth login", "ado-stack auth logout"],
+    detail:
+      "Login reads a PAT from ADO_STACK_PAT or AZURE_DEVOPS_EXT_PAT, then prompts on a TTY or reads stdin. The PAT is stored in the user config directory with mode 0600, never in the repository.",
+    positionals: [{ name: "action", required: false }],
+    flags: [{ name: "help", kind: "boolean" }],
+  },
+  {
+    name: "init",
+    group: "setup",
+    summary: "Initialize or reconcile stack state for this repository",
+    usage: [
+      "ado-stack init [--organization <url>] [--project <name>] [--repository <name>] [--default-branch <name>] [--remote <name>]",
+    ],
+    detail:
+      "Detect the Azure DevOps remote, write .git/ado-stack/state.json, and rebuild from pull request metadata when it is unambiguous.",
+    flags: [
+      { name: "organization", kind: "string", valueName: "url" },
+      { name: "project", kind: "string", valueName: "name" },
+      { name: "repository", kind: "string", valueName: "name" },
+      { name: "default-branch", kind: "string", valueName: "name" },
+      { name: "remote", kind: "string", valueName: "name" },
+      { name: "help", kind: "boolean" },
+    ],
+  },
+  {
+    name: "config",
+    group: "setup",
+    summary: "Get or set configuration",
+    usage: [
+      "ado-stack config list",
+      "ado-stack config get <key>",
+      "ado-stack config set <key> <value> [--global]",
+    ],
+    detail:
+      "Keys are organization, project, repository, defaultBranch, branchPrefix, and authMode.",
+    positionals: [{ name: "action", required: false }],
+    flags: [
+      { name: "global", kind: "boolean" },
+      { name: "help", kind: "boolean" },
+    ],
+  },
+  {
+    name: "create",
+    group: "daily",
+    summary: "Create the next stack branch from the current branch",
+    usage: ["ado-stack create <name>"],
+    detail:
+      "Create a Git branch from HEAD and record it as the next layer of the linear stack. Honors the configured branchPrefix.",
+    positionals: [{ name: "name", required: true }],
+    flags: [{ name: "help", kind: "boolean" }],
+  },
+  {
+    name: "submit",
+    group: "daily",
+    summary: "Push the stack and create or update pull requests",
+    usage: ["ado-stack submit [--title <title>]"],
+    detail:
+      "Push each stack branch and create or update its Azure DevOps pull request. Existing pull request titles and human description text are preserved.",
+    flags: [
+      { name: "title", kind: "string", valueName: "title" },
+      { name: "help", kind: "boolean" },
+    ],
+  },
+  {
+    name: "status",
+    group: "daily",
+    summary: "Show local and Azure DevOps stack state",
+    usage: ["ado-stack status"],
+    detail: "Print the stack from trunk to tip, pull request state, and whether restack is needed.",
+    flags: [{ name: "help", kind: "boolean" }],
+  },
+  {
+    name: "up",
+    group: "daily",
+    summary: "Check out the child stack branch",
+    usage: ["ado-stack up"],
+    detail: "Check out the child of the current stack branch.",
+    flags: [{ name: "help", kind: "boolean" }],
+  },
+  {
+    name: "down",
+    group: "daily",
+    summary: "Check out the parent stack branch",
+    usage: ["ado-stack down"],
+    detail: "Check out the parent of the current stack branch.",
+    flags: [{ name: "help", kind: "boolean" }],
+  },
+  {
+    name: "checkout",
+    group: "daily",
+    summary: "Check out a stack branch or pull request",
+    usage: ["ado-stack checkout <branch-or-pr>"],
+    detail: "Accept a branch name, prefixed name, or pull request number.",
+    positionals: [{ name: "branch-or-pr", required: true }],
+    flags: [{ name: "help", kind: "boolean" }],
+  },
+  {
+    name: "restack",
+    group: "recovery",
+    summary: "Rebase stack branches onto updated parents",
+    usage: ["ado-stack restack [--continue | --abort]"],
+    detail:
+      "Rebase each stack branch onto its live parent. After a squash merge, retarget the next active pull request. Stops on conflicts and leaves Git rebase state in place.",
+    flags: [
+      { name: "continue", kind: "boolean" },
+      { name: "abort", kind: "boolean" },
+      { name: "help", kind: "boolean" },
+    ],
+  },
+  {
+    name: "repair",
+    group: "recovery",
+    summary: "Rebuild unambiguous local state",
+    usage: ["ado-stack repair"],
+    detail:
+      "Rebuild local state when Git, Azure DevOps metadata, and recorded parents agree. Conflicting sources of truth are reported, not guessed.",
+    flags: [{ name: "help", kind: "boolean" }],
+  },
+];
+
+export function getCommandSpec(name: string): CommandSpec | undefined {
+  return COMMAND_SPECS.find((spec) => spec.name === name);
+}
+
+export function booleanFlagNames(command: CommandSpec["name"]): string[] {
+  return (
+    getCommandSpec(command)
+      ?.flags.filter((flag) => flag.kind === "boolean")
+      .map((flag) => flag.name) ?? []
+  );
+}
+
+export function knownFlagNames(command: CommandSpec["name"]): string[] {
+  return getCommandSpec(command)?.flags.map((flag) => flag.name) ?? [];
+}

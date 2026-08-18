@@ -75,6 +75,21 @@ describe("restack against fake Azure DevOps", () => {
       }
 
       const localMainBefore = await repo.git.getBranchTip("main");
+      const unauthenticated = await runCli(["restack"], { cwd: repo.dir });
+      expect(unauthenticated.exitCode).toBe(1);
+      expect(unauthenticated.stderr).toContain(
+        "Azure DevOps authentication is required to restack safely after merges.",
+      );
+      expect(unauthenticated.stdout).not.toContain("already up to date");
+
+      const rejectedCredentials = await runCli(["restack"], {
+        cwd: repo.dir,
+        env: { ADO_STACK_PAT: "wrong" },
+      });
+      expect(rejectedCredentials.exitCode).toBe(1);
+      expect(rejectedCredentials.stderr).toContain("Could not load PR");
+      expect(rejectedCredentials.stdout).not.toContain("already up to date");
+
       const restack = await runCli(["restack"], { cwd: repo.dir, env });
       expect(restack.exitCode).toBe(0);
       expect(restack.stdout).toContain(`${apiPr.pullRequestId}`);

@@ -6,7 +6,7 @@ export async function configCommand(
   ctx: AppContext,
   args: string[],
   flags: Record<string, string | boolean>,
-): Promise<void> {
+): Promise<number> {
   const sub = args[0] ?? "list";
   switch (sub) {
     case "list": {
@@ -19,7 +19,7 @@ export async function configCommand(
       }
       ctx.log.verbose(`global: ${JSON.stringify(global)}`);
       ctx.log.verbose(`repo: ${JSON.stringify(repo)}`);
-      return;
+      return 0;
     }
     case "get": {
       const key = args[1];
@@ -28,11 +28,10 @@ export async function configCommand(
       }
       const value = resolvedValue(ctx, key);
       if (value === undefined || value === "") {
-        process.exitCode = 1;
-        return;
+        return 1;
       }
       ctx.log.info(value);
-      return;
+      return 0;
     }
     case "set": {
       const key = args[1];
@@ -54,7 +53,7 @@ export async function configCommand(
         await ctx.configStore.writeRepo(next);
       }
       ctx.log.success(`Set ${key}=${raw} (${global ? "global" : "repository"}).`);
-      return;
+      return 0;
     }
     default:
       throw new CliError(`Unknown config command \`${sub}\`.\n\nUse list, get, or set.`);

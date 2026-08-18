@@ -1,6 +1,7 @@
 import { CliError } from "../errors/cli-error.ts";
 import { childOf, isTracked } from "../stack/graph.ts";
 import { applyBranchPrefix, validateBranchName } from "../stack/names.ts";
+import { formatBranch } from "../ui/format.ts";
 import type { AppContext } from "./context.ts";
 import { requireState } from "./context.ts";
 
@@ -47,6 +48,8 @@ export async function createCommand(ctx: AppContext, args: string[]): Promise<vo
     lastLocalTip: tip,
   };
   await ctx.stateStore.write(state);
-  ctx.log.success(`Created \`${name}\` on top of \`${current}\`.`);
+  ctx.log.success(
+    `Created \`${formatBranch(name, ctx.config.branchPrefix)}\` on top of \`${formatBranch(current, ctx.config.branchPrefix)}\`.`,
+  );
   ctx.log.info("Commit on this branch, then `ado-stack create` again or `ado-stack submit`.");
 }

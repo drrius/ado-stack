@@ -1,4 +1,15 @@
 import { VERSION } from "../version.ts";
+import {
+  COMMAND_SPECS,
+  type CommandGroup,
+  type CommandName,
+  type CommandSpec,
+  booleanFlagNames,
+  getCommandSpec,
+  knownFlagNames,
+} from "./commands.ts";
+
+export type { CommandName } from "./commands.ts";
 
 export type GlobalFlags = {
   help: boolean;
@@ -13,39 +24,14 @@ export type ParsedCli =
   | { kind: "global-version"; flags: GlobalFlags }
   | {
       kind: "command";
-      command: CommandName;
+      command: CommandSpec["name"];
       args: string[];
       flags: GlobalFlags;
       commandFlags: Record<string, string | boolean>;
     };
 
-export type CommandName =
-  | "init"
-  | "create"
-  | "submit"
-  | "status"
-  | "restack"
-  | "up"
-  | "down"
-  | "checkout"
-  | "auth"
-  | "config"
-  | "repair"
-  | "help"
-  | "version";
-
 const COMMANDS: readonly CommandName[] = [
-  "init",
-  "create",
-  "submit",
-  "status",
-  "restack",
-  "up",
-  "down",
-  "checkout",
-  "auth",
-  "config",
-  "repair",
+  ...COMMAND_SPECS.map((spec) => spec.name),
   "help",
   "version",
 ];
@@ -113,28 +99,50 @@ export function parseArgv(argv: string[]): ParsedCli {
     );
   }
   if (commandRaw === "help") {
-    return { kind: "global-help", flags };
+    const helpTarget = commandArgs[0];
+    if (helpTarget === undefined) {
+      return { kind: "global-help", flags };
+    }
+    const helpSpec = getCommandSpec(helpTarget);
+    if (!helpSpec) {
+      throw usageError(
+        `Unknown command \`${helpTarget}\`.\n\nRun \`ado-stack --help\` for the list of commands.`,
+      );
+    }
+    return {
+      kind: "command",
+      command: helpSpec.name,
+      args: [],
+      flags: { ...flags, help: true },
+      commandFlags: { help: true },
+    };
   }
   if (commandRaw === "version") {
     return { kind: "global-version", flags };
   }
-  const { args, commandFlags } = splitCommandArgs(commandRaw, commandArgs);
+  const command = getCommandSpec(commandRaw);
+  if (!command) {
+    throw usageError(`Unknown command \`${commandRaw}\`.`);
+  }
+  const { args, commandFlags } = splitCommandArgs(command.name, commandArgs);
   if (flags.help || commandFlags.help === true) {
     return {
       kind: "command",
-      command: commandRaw,
+      command: command.name,
       args,
       flags: { ...flags, help: true },
       commandFlags,
     };
   }
-  return { kind: "command", command: commandRaw, args, flags, commandFlags };
+  return { kind: "command", command: command.name, args, flags, commandFlags };
 }
 
 function splitCommandArgs(
-  command: CommandName,
+  command: CommandSpec["name"],
   argv: string[],
 ): { args: string[]; commandFlags: Record<string, string | boolean> } {
+  const booleanNames = new Set(booleanFlagNames(command));
+  const knownNames = new Set(knownFlagNames(command));
   const commandFlags: Record<string, string | boolean> = {};
   const args: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -149,7 +157,13 @@ function splitCommandArgs(
     }
     const [rawName, inline] = splitFlag(arg);
     const name = rawName.replace(/^--/, "");
-    if (booleanFlag(command, name)) {
+    if (!knownNames.has(name)) {
+      throw usageError(`Unknown option \`${rawName}\`.`);
+    }
+    if (booleanNames.has(name)) {
+      if (inline !== undefined) {
+        throw usageError(`Boolean option \`${rawName}\` does not accept a value.`);
+      }
       commandFlags[name] = true;
       continue;
     }
@@ -170,16 +184,6 @@ function splitFlag(arg: string): [string, string | undefined] {
   return [arg.slice(0, eq), arg.slice(eq + 1)];
 }
 
-function booleanFlag(command: CommandName, name: string): boolean {
-  if (name === "continue" || name === "abort" || name === "global" || name === "help") {
-    return true;
-  }
-  if (command === "auth" && (name === "pat" || name === "status")) {
-    return true;
-  }
-  return false;
-}
-
 export class UsageError extends Error {
   constructor(message: string) {
     super(message);
@@ -196,6 +200,17 @@ export function printVersion(write: (line: string) => void = console.log): void 
 }
 
 export function printHelp(write: (line: string) => void = console.log): void {
+  const groups: Array<{ group: CommandGroup; title: string }> = [
+    { group: "setup", title: "Setup" },
+    { group: "daily", title: "Daily" },
+    { group: "recovery", title: "Recovery" },
+  ];
+  const sections = groups.map(({ group, title }) => {
+    const commands = COMMAND_SPECS.filter((spec) => spec.group === group)
+      .map((spec) => `  ${spec.name.padEnd(12)} ${spec.summary}`)
+      .join("\n");
+    return `${title}:\n${commands}`;
+  });
   write(`ado-stack ${VERSION}
 
 Graphite-style stacked pull requests for Azure DevOps, using normal Git.
@@ -203,18 +218,10 @@ Graphite-style stacked pull requests for Azure DevOps, using normal Git.
 Usage:
   ado-stack <command> [options]
 
-Commands:
-  init                 Initialize or reconcile stack state for this repo
-  create <name>        Create a new stack branch from the current branch
-  submit               Push the stack and create or update Azure DevOps PRs
-  status               Show local and Azure DevOps stack state
-  restack              Rebase stack branches onto updated parents
-  up                   Check out the child stack branch
-  down                 Check out the parent stack branch
-  checkout <ref>       Check out a stack branch or PR number
-  auth                 Show, store, or clear credentials
-  config               Get or set configuration
-  repair               Rebuild unambiguous local state from Git and Azure DevOps
+Workflow:
+  auth login → init → create → submit
+
+${sections.join("\n\n")}
 
 Global options:
   --verbose            Extra progress
@@ -222,6 +229,8 @@ Global options:
   --cwd <path>         Run as if started in <path>
   -h, --help           Show help
   -V, --version        Show version
+
+Run \`ado-stack <command> --help\` for command details.
 
 Safety:
   History rewrites use git push --force-with-lease only.
@@ -231,80 +240,33 @@ Safety:
 }
 
 export function printCommandHelp(
-  command: CommandName,
+  command: CommandSpec["name"],
   write: (line: string) => void = console.log,
 ): void {
-  switch (command) {
-    case "init":
-      write(`Usage: ado-stack init [--organization <url>] [--project <name>] [--repository <name>] [--default-branch <name>] [--remote <name>]
-
-Detect the Azure DevOps remote, write .git/ado-stack/state.json, and rebuild from PR metadata when it is unambiguous.`);
-      return;
-    case "create":
-      write(`Usage: ado-stack create <name>
-
-Create a Git branch from HEAD and record it as the next layer of the linear stack. Honors config branchPrefix.`);
-      return;
-    case "submit":
-      write(`Usage: ado-stack submit [--title <title>]
-
-Push each stack branch and create or update the matching Azure DevOps pull request. Existing PR titles and human description text are preserved.`);
-      return;
-    case "status":
-      write(`Usage: ado-stack status
-
-Print the stack, PR state, and whether restack is needed. Exit 0 when the command itself succeeds.`);
-      return;
-    case "restack":
-      write(`Usage: ado-stack restack [--continue | --abort]
-
-Rebase each stack branch onto its live parent. After a squash merge, retarget the next active PR. Stops on conflicts and leaves Git rebase state in place.`);
-      return;
-    case "up":
-      write(`Usage: ado-stack up
-
-Check out the child of the current stack branch.`);
-      return;
-    case "down":
-      write(`Usage: ado-stack down
-
-Check out the parent of the current stack branch.`);
-      return;
-    case "checkout":
-      write(`Usage: ado-stack checkout <branch-or-pr>
-
-Accept a branch name, prefixed name, or pull request number.`);
-      return;
-    case "auth":
-      write(`Usage:
-  ado-stack auth
-  ado-stack auth login
-  ado-stack auth logout
-
-login reads a PAT from ADO_STACK_PAT / AZURE_DEVOPS_EXT_PAT, or from stdin. The PAT is stored in the user config directory with mode 0600, never in the repo.`);
-      return;
-    case "config":
-      write(`Usage:
-  ado-stack config list
-  ado-stack config get <key>
-  ado-stack config set <key> <value> [--global]
-
-Keys: organization, project, repository, defaultBranch, branchPrefix, authMode`);
-      return;
-    case "repair":
-      write(`Usage: ado-stack repair
-
-Rebuild local state when Git, Azure DevOps metadata, and recorded parents agree. Conflicting sources of truth are reported, not guessed.`);
-      return;
-    case "help":
-      printHelp(write);
-      return;
-    case "version":
-      printVersion(write);
-      return;
-    default: {
-      const _exhaustive: never = command;
-      throw new Error(`Unhandled help command ${String(_exhaustive)}`);
-    }
+  const spec = getCommandSpec(command);
+  if (!spec) {
+    throw new Error(`No help registered for ${command}`);
   }
+  const usage = spec.usage.map((line) => `  ${line}`).join("\n");
+  const options = spec.flags
+    .map((flag) => {
+      switch (flag.kind) {
+        case "boolean":
+          return `  --${flag.name}`;
+        case "string":
+          return `  --${flag.name} <${flag.valueName}>`;
+        default: {
+          const _exhaustive: never = flag;
+          return _exhaustive;
+        }
+      }
+    })
+    .join("\n");
+  write(`Usage:
+${usage}
+
+${spec.detail}
+
+Options:
+${options}`);
 }

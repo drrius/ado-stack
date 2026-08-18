@@ -1,17 +1,25 @@
 import type { AdoPullRequest } from "../ado/types.ts";
 import { stackOrder } from "../stack/graph.ts";
-import { displayName } from "../stack/names.ts";
 import { restackNeeded } from "../stack/ownership.ts";
 import { type PullRequestSnapshot, effectiveParent, resolveOntoSha } from "../stack/restack.ts";
 import type { StackState } from "../state/schema.ts";
-import { type AppContext, fromRefsHeads, maybeAdoClient, requireState } from "./context.ts";
+import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
+import { logNext } from "../ui/next.ts";
+import {
+  type AdoAccess,
+  type AppContext,
+  fromRefsHeads,
+  requireState,
+  resolveAdoAccess,
+} from "./context.ts";
 
 export async function statusCommand(ctx: AppContext): Promise<void> {
   const state = await requireState(ctx);
   const order = stackOrder(state);
   const current = (await ctx.git.currentBranch()) ?? "HEAD";
-  const ado = await maybeAdoClient(ctx, state);
+  const access = await resolveAdoAccess(ctx, state);
   const prs = new Map<number, AdoPullRequest>();
+  let loadError: string | undefined;
   try {
     await ctx.git.fetch(state.remoteName);
   } catch (error) {
@@ -19,23 +27,18 @@ export async function statusCommand(ctx: AppContext): Promise<void> {
       `Could not fetch ${state.remoteName}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  if (ado) {
-    try {
-      for (const branch of order) {
-        const id = state.branches[branch]?.pullRequestId;
-        if (id === undefined) {
-          continue;
-        }
-        try {
-          prs.set(id, await ado.getPullRequest(id));
-        } catch {
-          ctx.log.debug(`Could not load PR #${id}`);
-        }
+  if (access.status === "ready") {
+    for (const branch of order) {
+      const id = state.branches[branch]?.pullRequestId;
+      if (id === undefined) {
+        continue;
       }
-    } catch (error) {
-      ctx.log.warn(
-        `Azure DevOps status is incomplete: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      try {
+        prs.set(id, await access.client.getPullRequest(id));
+      } catch (error) {
+        loadError ??= error instanceof Error ? error.message : String(error);
+        ctx.log.debug(`Could not load PR #${id}`);
+      }
     }
   }
 
@@ -50,23 +53,46 @@ export async function statusCommand(ctx: AppContext): Promise<void> {
   }
 
   const snapshots = toSnapshots(prs);
+  if (access.status === "unavailable") {
+    ctx.log.info(
+      access.reason === "unauthenticated"
+        ? "Not authenticated to Azure DevOps."
+        : `Azure DevOps status unavailable: ${access.message}`,
+    );
+  } else if (loadError) {
+    ctx.log.warn(`Azure DevOps status is incomplete: ${loadError}`);
+  }
   ctx.log.info("Stack");
   ctx.log.info("");
   if (order.length === 0) {
     ctx.log.info("  (empty)");
   }
-  for (const branch of [...order].reverse()) {
-    ctx.log.info(formatRow({ ctx, state, branch, current, prs, snapshots, parentTips }));
+  const rows = order.map((branch) =>
+    formatRow({ ctx, state, branch, current, access, prs, snapshots, parentTips }),
+  );
+  for (const row of rows) {
+    ctx.log.info(row.line);
+    if (row.url) {
+      ctx.log.info(`    ${row.url}`);
+    }
   }
   ctx.log.info("");
-  ctx.log.info(`Current: ${current}`);
-  const issues = collectIssues(state, order, prs);
+  ctx.log.info(`Current: ${formatBranch(current, ctx.config.branchPrefix)}`);
+  const issues = collectIssues(state, order, access, prs, ctx.config.branchPrefix);
   if (issues.length > 0) {
     ctx.log.info("");
     ctx.log.info("Notes");
     for (const issue of issues) {
       ctx.log.info(`  ${issue}`);
     }
+  }
+  ctx.log.info("");
+  if (access.status === "unavailable" && access.reason === "unauthenticated") {
+    logNext(ctx.log, "ado-stack auth login");
+  } else if (order.length === 0) {
+    logNext(ctx.log, "ado-stack create <name>");
+  } else if (rows.some((row) => row.needsRestack)) {
+    logNext(ctx.log, "ado-stack restack");
   }
 }
 
@@ -88,19 +114,25 @@ function formatRow(options: {
   state: StackState;
   branch: string;
   current: string;
+  access: AdoAccess;
   prs: Map<number, AdoPullRequest>;
   snapshots: Map<number, PullRequestSnapshot>;
   parentTips: Record<string, string>;
-}): string {
+}): { line: string; url?: string; needsRestack: boolean } {
   const record = options.state.branches[options.branch];
   if (!record) {
-    return `  ${options.branch}`;
+    return {
+      line: `  ${formatBranch(options.branch, options.ctx.config.branchPrefix)}`,
+      needsRestack: false,
+    };
   }
   const pr = record.pullRequestId !== undefined ? options.prs.get(record.pullRequestId) : undefined;
   const prLabel = record.pullRequestId !== undefined ? `#${record.pullRequestId}` : "no-pr";
-  const name = displayName(options.branch, options.ctx.config.branchPrefix).padEnd(12);
-  const parent = displayName(record.parent, options.ctx.config.branchPrefix).padEnd(10);
-  const status = (pr ? prStatusLabel(pr) : "LOCAL").padEnd(10);
+  const name = formatBranch(options.branch, options.ctx.config.branchPrefix).padEnd(12);
+  const parent = formatBranch(record.parent, options.ctx.config.branchPrefix).padEnd(10);
+  const status = (
+    pr ? prStatusLabel(pr) : record.pullRequestId !== undefined ? "UNKNOWN" : "LOCAL"
+  ).padEnd(10);
   const flags: string[] = [];
   if (options.branch === options.current) {
     flags.push("current");
@@ -127,7 +159,15 @@ function formatRow(options: {
   if (record.lastKnownRemoteTip && localTip && record.lastKnownRemoteTip !== localTip) {
     flags.push("local/remote diverge");
   }
-  return `  ${prLabel.padEnd(6)} ${name} → ${parent} ${status} ${flags.join("  ")}`.trimEnd();
+  const title = pr?.title ? `  ${pr.title}` : "";
+  const row: { line: string; url?: string; needsRestack: boolean } = {
+    line: `  ${prLabel.padEnd(6)} ${name} → ${parent} ${status} ${flags.join("  ")}${title}`.trimEnd(),
+    needsRestack: needs,
+  };
+  if (pr) {
+    row.url = pullRequestWebUrl(options.state, pr.pullRequestId);
+  }
+  return row;
 }
 
 function prStatusLabel(pr: AdoPullRequest): string {
@@ -150,7 +190,9 @@ function prStatusLabel(pr: AdoPullRequest): string {
 function collectIssues(
   state: StackState,
   order: string[],
+  access: AdoAccess,
   prs: Map<number, AdoPullRequest>,
+  prefix: string,
 ): string[] {
   const issues: string[] = [];
   for (const branch of order) {
@@ -159,12 +201,14 @@ function collectIssues(
       continue;
     }
     const pr = record.pullRequestId !== undefined ? prs.get(record.pullRequestId) : undefined;
-    if (record.pullRequestId !== undefined && !pr) {
-      issues.push(`PR #${record.pullRequestId} for ${branch} could not be loaded.`);
+    if (access.status === "ready" && record.pullRequestId !== undefined && !pr) {
+      issues.push(
+        `PR #${record.pullRequestId} for ${formatBranch(branch, prefix)} could not be loaded.`,
+      );
     }
     if (pr && fromRefsHeads(pr.sourceRefName) !== branch) {
       issues.push(
-        `PR #${pr.pullRequestId} source is ${fromRefsHeads(pr.sourceRefName)}, expected ${branch}.`,
+        `PR #${pr.pullRequestId} source is ${formatBranch(fromRefsHeads(pr.sourceRefName), prefix)}, expected ${formatBranch(branch, prefix)}.`,
       );
     }
   }
