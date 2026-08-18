@@ -225,4 +225,100 @@ describe("status sync flags", () => {
       await repo.cleanup();
     }
   }, 30_000);
+
+  test("preflight descendants of a branch that will move", async () => {
+    const repo = await createTempRepo();
+    try {
+      await runCli(
+        [
+          "init",
+          "--organization",
+          "https://dev.azure.com/example",
+          "--project",
+          "P",
+          "--repository",
+          "R",
+        ],
+        { cwd: repo.dir },
+      );
+      await writeCommit(repo.git, "a.txt", "1\n", "a1");
+      await writeCommit(repo.git, "b.txt", "1\n", "b1");
+      await runCli(["create", "A"], { cwd: repo.dir });
+      await writeCommit(repo.git, "a.txt", "A\n", "A-change");
+      await runCli(["create", "B"], { cwd: repo.dir });
+      await writeCommit(repo.git, "b.txt", "B\n", "B-change");
+      await repo.git.checkout("main");
+      await writeCommit(repo.git, "b.txt", "M\n", "main-b");
+
+      const json = await runCli(["status", "--json", "--preflight"], { cwd: repo.dir });
+      expect(json.exitCode).toBe(0);
+      const parsed = JSON.parse(json.stdout) as {
+        forest: Array<{
+          branch: string;
+          needsRestack: boolean;
+          preflight?: { kind: string; files?: string[] };
+          children: Array<{
+            branch: string;
+            needsRestack: boolean;
+            preflight?: { kind: string; files?: string[] };
+          }>;
+        }>;
+      };
+      const parent = parsed.forest[0];
+      const child = parent?.children[0];
+      expect(parent?.branch).toBe("A");
+      expect(parent?.needsRestack).toBe(true);
+      expect(parent?.preflight?.kind).toBe("clean");
+      expect(child?.branch).toBe("B");
+      expect(child?.needsRestack).toBe(false);
+      expect(child?.preflight?.kind).toBe("conflicts");
+      expect(child?.preflight?.files).toEqual(["b.txt"]);
+    } finally {
+      await repo.cleanup();
+    }
+  }, 30_000);
+
+  test("preflight replays each commit instead of the final tree", async () => {
+    const repo = await createTempRepo();
+    try {
+      await runCli(
+        [
+          "init",
+          "--organization",
+          "https://dev.azure.com/example",
+          "--project",
+          "P",
+          "--repository",
+          "R",
+        ],
+        { cwd: repo.dir },
+      );
+      await writeCommit(repo.git, "file.txt", "base\n", "base");
+      await runCli(["create", "A"], { cwd: repo.dir });
+      await writeCommit(repo.git, "file.txt", "changed\n", "touch");
+      await writeCommit(repo.git, "file.txt", "base\n", "restore");
+      await repo.git.checkout("main");
+      await writeCommit(repo.git, "file.txt", "other\n", "main-edit");
+
+      const json = await runCli(["status", "--json", "--preflight"], { cwd: repo.dir });
+      expect(json.exitCode).toBe(0);
+      const parsed = JSON.parse(json.stdout) as {
+        forest: Array<{ preflight?: { kind: string; files?: string[] } }>;
+      };
+      expect(parsed.forest[0]?.preflight?.kind).toBe("conflicts");
+      expect(parsed.forest[0]?.preflight?.files).toEqual(["file.txt"]);
+
+      const parentSha = await repo.git.getBranchTip("main");
+      const branchSha = await repo.git.getBranchTip("A");
+      const mergeBase = await repo.git.mergeBase(parentSha, branchSha);
+      const tree = await repo.git.mergeTree({
+        mergeBase: mergeBase!,
+        ours: parentSha,
+        theirs: branchSha,
+      });
+      expect(tree.exitCode).toBe(0);
+    } finally {
+      await repo.cleanup();
+    }
+  }, 30_000);
 });

@@ -4,6 +4,7 @@ import {
   type LocalBranchDisposition,
   type MergeAbsorption,
   type MergeChild,
+  type ReconcileRefusal,
   applyAbsorption,
   planCompletedMerges,
 } from "../stack/reconcile.ts";
@@ -12,11 +13,18 @@ import { heldBranchesOutsideCurrent } from "../stack/worktrees.ts";
 import type { StackState } from "../state/schema.ts";
 import { formatBranch } from "../ui/format.ts";
 import { type AppContext, resolveAdoAccess } from "./context.ts";
-import { loadTrackedSnapshots, retargetStackPullRequest } from "./pull-requests.ts";
+import {
+  loadTrackedSnapshots,
+  requireCompleteSnapshots,
+  retargetStackPullRequest,
+} from "./pull-requests.ts";
+
+export type IncompleteSnapshots = "fail" | "skip";
 
 export async function reconcileCompletedMerges(
   ctx: AppContext,
   state: StackState,
+  options: { incompleteSnapshots?: IncompleteSnapshots } = {},
 ): Promise<StackState> {
   if (await ctx.stateStore.readRestackPlan()) {
     ctx.log.info("Skipped merge reconcile because a restack is in progress.");
@@ -27,9 +35,18 @@ export async function reconcileCompletedMerges(
     ctx.log.info(`Skipped merge reconcile: ${access.message}`);
     return state;
   }
-  const pullRequests = await loadTrackedSnapshots(access.client, state);
+  const loaded = await loadTrackedSnapshots(access.client, state);
+  if (!loaded.ok && options.incompleteSnapshots === "skip") {
+    ctx.log.info(`Skipped merge reconcile: could not load PR #${loaded.pullRequestId}.`);
+    return state;
+  }
+  const pullRequests = requireCompleteSnapshots(loaded);
   const facts = await collectGitFacts(ctx, state);
   const plan = planCompletedMerges({ state, pullRequests, facts });
+  const prefix = ctx.config.branchPrefix;
+  for (const refusal of plan.refusals) {
+    ctx.log.warn(refusalText(refusal, prefix));
+  }
   if (plan.absorptions.length === 0) {
     return state;
   }
@@ -106,6 +123,22 @@ async function applyPlannedAbsorption(
     }
   }
   return next;
+}
+
+function refusalText(refusal: ReconcileRefusal, prefix: string): string {
+  const branchLabel = formatBranch(refusal.branch, prefix);
+  switch (refusal.reason) {
+    case "source-mismatch":
+      return `Skipped absorbing PR #${refusal.pullRequestId} \`${branchLabel}\`: source is \`${formatBranch(refusal.sourceBranch, prefix)}\`, expected \`${branchLabel}\`.`;
+    case "untracked-target":
+      return `Skipped absorbing PR #${refusal.pullRequestId} \`${branchLabel}\`: target \`${formatBranch(refusal.target, prefix)}\` is not trunk and is not tracked.`;
+    case "cyclic-target":
+      return `Skipped absorbing PR #${refusal.pullRequestId} \`${branchLabel}\`: target \`${formatBranch(refusal.target, prefix)}\` is ${refusal.target === refusal.branch ? "the same branch" : "a descendant"}.`;
+    default: {
+      const _exhaustive: never = refusal;
+      throw new Error(`Unhandled reconcile refusal ${JSON.stringify(_exhaustive)}`);
+    }
+  }
 }
 
 function keepReasonText(

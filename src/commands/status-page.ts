@@ -114,7 +114,10 @@ export async function openStatusPage(path: string): Promise<void> {
         ? ["cmd", "/c", "start", "", path]
         : ["xdg-open", path];
   const proc = Bun.spawn(command, { stdout: "ignore", stderr: "ignore" });
-  await proc.exited;
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    throw new Error(`${command[0]} exited ${exitCode}.`);
+  }
 }
 
 function embedJson(value: unknown): string {
@@ -128,11 +131,18 @@ function pageScript(): string {
   return `const model = JSON.parse(document.getElementById("model").textContent);
 const COL = 260;
 const ROW = 128;
+const FILE_ROW = 14;
 const nodes = [];
+
+function blockHeight(node) {
+  const files = node.preflight && node.preflight.kind === "conflicts" ? node.preflight.files.length : 0;
+  return Math.max(ROW, 80 + files * FILE_ROW);
+}
 
 function walk(node, depth) {
   const children = (node.children || []).map((child) => walk(child, depth + 1));
-  const height = children.length === 0 ? 1 : children.reduce((sum, child) => sum + child.height, 0);
+  const childSpan = children.reduce((sum, child) => sum + child.height, 0);
+  const height = children.length === 0 ? blockHeight(node) : Math.max(blockHeight(node), childSpan);
   const laid = { ...node, depth, children, height };
   nodes.push(laid);
   return laid;
@@ -154,7 +164,7 @@ const trunk = {
   preflight: { kind: "not-needed" },
   depth: 0,
   children: forest,
-  height: forest.length === 0 ? 1 : forest.reduce((sum, node) => sum + node.height, 0),
+  height: forest.length === 0 ? ROW : forest.reduce((sum, node) => sum + node.height, 0),
 };
 nodes.unshift(trunk);
 
@@ -164,7 +174,7 @@ function place(node, y0) {
   for (const child of node.children) {
     place(child, y);
     childYs.push(child.y);
-    y += child.height * ROW;
+    y += child.height;
   }
   node.x = node.depth * COL + 48;
   node.y = childYs.length ? (childYs[0] + childYs[childYs.length - 1]) / 2 : y0 + 56;
@@ -173,7 +183,7 @@ function place(node, y0) {
 place(trunk, 24);
 
 const width = Math.max(...nodes.map((node) => node.x)) + 220;
-const height = Math.max(trunk.height * ROW + 48, 200);
+const height = Math.max(trunk.height + 48, 200);
 const canvas = document.getElementById("canvas");
 const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 svg.setAttribute("width", String(width));

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { StackState } from "../state/schema.ts";
+import { displayWidth } from "../ui/display-width.ts";
 import { type StackStatus, type StatusRow, forestLayout } from "./status-model.ts";
 import {
   DEFAULT_STATUS_WIDTH,
@@ -18,6 +19,12 @@ const state: StackState = {
   defaultBranch: "main",
   remoteName: "origin",
   branches: {},
+};
+
+const textOptions = {
+  urls: false as const,
+  branchPrefix: "",
+  state,
 };
 
 const parent: StatusRow = {
@@ -96,7 +103,7 @@ describe("status forest rendering", () => {
     const layout = forestLayout(status.rows, status.defaultBranch);
     expect(layout).toHaveLength(status.rows.length);
     for (const width of [40, 60, 80, 100, 160]) {
-      const lines = formatForestRows(status, { width, urls: false, branchPrefix: "" });
+      const lines = formatForestRows(status, { ...textOptions, width });
       expect(lines).toHaveLength(layout.length);
       for (const [index, line] of lines.entries()) {
         expect(line.includes("\n")).toBe(false);
@@ -117,12 +124,12 @@ describe("status forest rendering", () => {
   });
 
   test("keeps glyphs and state at 40 columns and shrinks title then branch", () => {
-    const lines = formatForestRows(status, { width: 40, urls: false, branchPrefix: "" });
+    const lines = formatForestRows(status, { ...textOptions, width: 40 });
     expect(lines).toHaveLength(3);
     for (const line of lines) {
       expect(line.includes("\n")).toBe(false);
       if (!line.includes("current")) {
-        expect(line.length).toBeLessThanOrEqual(40);
+        expect(displayWidth(line)).toBeLessThanOrEqual(40);
       }
     }
     expect(lines[0]).toContain("├──");
@@ -135,11 +142,47 @@ describe("status forest rendering", () => {
   });
 
   test("prints a URL only when asked", () => {
-    const hidden = formatForestRows(status, { width: 200, urls: false, branchPrefix: "" });
-    const shown = formatForestRows(status, { width: 200, urls: true, branchPrefix: "" });
+    const hidden = formatForestRows(status, { ...textOptions, width: 200 });
+    const shown = formatForestRows(status, { ...textOptions, width: 200, urls: true });
     expect(hidden.join("\n")).not.toContain("pullrequest");
     expect(shown[0]).toContain(parent.pr.kind === "loaded" ? parent.pr.url : "");
     expect(shown.join("\n").split("\n")).toHaveLength(3);
+  });
+
+  test("derives a URL for unknown PRs from repository state", () => {
+    const unknown: StatusRow = {
+      ...sibling,
+      branch: "feat/unknown-pr",
+      pr: { kind: "unknown", id: 42 },
+    };
+    const lines = formatForestRows(
+      { ...status, rows: [unknown] },
+      { ...textOptions, width: 200, urls: true },
+    );
+    expect(lines[0]).toContain("https://dev.azure.com/example/Platform/_git/app/pullrequest/42");
+    expect(toStatusJson({ ...status, rows: [unknown] }, state).forest[0]?.url).toBe(
+      "https://dev.azure.com/example/Platform/_git/app/pullrequest/42",
+    );
+  });
+
+  test("fits CJK titles by terminal columns", () => {
+    const cjk: StatusRow = {
+      ...parent,
+      branch: "feat/cjk",
+      pr: {
+        kind: "loaded",
+        id: 7,
+        title: "修复编辑器批量保存结果",
+        url: "https://dev.azure.com/example/Platform/_git/app/pullrequest/7",
+        state: "open",
+      },
+    };
+    const lines = formatForestRows({ ...status, rows: [cjk] }, { ...textOptions, width: 48 });
+    expect(lines).toHaveLength(1);
+    expect(displayWidth(lines[0]!)).toBeLessThanOrEqual(48);
+    expect(lines[0]).toContain("└──");
+    expect(lines[0]).toContain("OPEN");
+    expect(lines[0]).toContain("…");
   });
 });
 

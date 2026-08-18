@@ -52,8 +52,8 @@ export async function statusCommand(
       ? { ...ctx, log: createLogger({ verbose: false, debug: ctx.debug, stdout: () => {} }) }
       : ctx;
   const status = await loadStackStatus(loadCtx);
+  const state = await requireState(ctx);
   if (wantsJson || wantsWeb || flags.preflight === true) {
-    const state = await requireState(ctx);
     let model = toStatusJson(status, state);
     if (wantsWeb || flags.preflight === true) {
       model = await attachPreflight(ctx.git, state, model);
@@ -79,7 +79,7 @@ export async function statusCommand(
     stdoutColumns: process.stdout.columns,
     columnsEnv: process.env.COLUMNS,
   });
-  renderStatus(ctx, status, { width, urls: flags.urls === true });
+  renderStatus(ctx, status, { width, urls: flags.urls === true, state });
 }
 
 export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
@@ -95,7 +95,7 @@ export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
       `Could not fetch ${state.remoteName}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  state = await reconcileCompletedMerges(ctx, state);
+  state = await reconcileCompletedMerges(ctx, state, { incompleteSnapshots: "skip" });
   const order = stackOrder(state);
   if (access.status === "ready") {
     for (const branch of order) {
@@ -174,7 +174,7 @@ function nextStep(ado: AdoStatusAccess, rows: StatusRow[]): NextStep {
 function renderStatus(
   ctx: AppContext,
   status: StackStatus,
-  options: { width: number; urls: boolean },
+  options: { width: number; urls: boolean; state: StackState },
 ): void {
   const prefix = ctx.config.branchPrefix;
   if (status.ado.kind === "unavailable") {
@@ -196,6 +196,7 @@ function renderStatus(
     width: options.width,
     urls: options.urls,
     branchPrefix: prefix,
+    state: options.state,
   })) {
     ctx.log.info(line);
   }
