@@ -1,7 +1,7 @@
 import { CliError } from "../errors/cli-error.ts";
 import type { StackState } from "../state/schema.ts";
-import { childrenOf, stackOrder } from "./graph.ts";
-import { type PullRequestSnapshot, effectiveParent } from "./restack.ts";
+import { childrenOf, descendantsOf, stackOrder } from "./graph.ts";
+import type { PullRequestSnapshot } from "./restack.ts";
 
 export type LocalBranchDisposition =
   | { kind: "delete" }
@@ -20,8 +20,29 @@ export type MergeAbsorption = {
   local: LocalBranchDisposition;
 };
 
+export type ReconcileRefusal =
+  | {
+      branch: string;
+      pullRequestId: number;
+      reason: "source-mismatch";
+      sourceBranch: string;
+    }
+  | {
+      branch: string;
+      pullRequestId: number;
+      reason: "untracked-target";
+      target: string;
+    }
+  | {
+      branch: string;
+      pullRequestId: number;
+      reason: "cyclic-target";
+      target: string;
+    };
+
 export type ReconcilePlan = {
   absorptions: MergeAbsorption[];
+  refusals: ReconcileRefusal[];
 };
 
 export type GitReconcileFacts = {
@@ -37,6 +58,7 @@ export function planCompletedMerges(options: {
   facts: GitReconcileFacts;
 }): ReconcilePlan {
   const absorptions: MergeAbsorption[] = [];
+  const refusals: ReconcileRefusal[] = [];
   for (const branch of stackOrder(options.state)) {
     const record = options.state.branches[branch];
     const pullRequestId = record?.pullRequestId;
@@ -47,11 +69,30 @@ export function planCompletedMerges(options: {
     if (snapshot?.status !== "completed") {
       continue;
     }
-    const into = effectiveParent({
+    if (snapshot.sourceBranch !== branch) {
+      refusals.push({
+        branch,
+        pullRequestId,
+        reason: "source-mismatch",
+        sourceBranch: snapshot.sourceBranch,
+      });
+      continue;
+    }
+    const into = livingMergeBase({
       state: options.state,
-      branch,
+      start: snapshot.targetBranch,
       pullRequests: options.pullRequests,
-    }).parent;
+    });
+    const unsafe = unsafeAbsorptionTarget(options.state, branch, into);
+    if (unsafe !== undefined) {
+      refusals.push({
+        branch,
+        pullRequestId,
+        reason: unsafe,
+        target: into,
+      });
+      continue;
+    }
     absorptions.push({
       branch,
       pullRequestId,
@@ -60,7 +101,7 @@ export function planCompletedMerges(options: {
       local: localDisposition(options.facts, branch, into),
     });
   }
-  return { absorptions };
+  return { absorptions, refusals };
 }
 
 export function applyAbsorption(state: StackState, absorption: MergeAbsorption): StackState {
@@ -82,6 +123,48 @@ export function applyAbsorption(state: StackState, absorption: MergeAbsorption):
   }
   delete next.branches[absorption.branch];
   return next;
+}
+
+function livingMergeBase(options: {
+  state: StackState;
+  start: string;
+  pullRequests: Map<number, PullRequestSnapshot>;
+}): string {
+  let parent = options.start;
+  const seen = new Set<string>();
+  while (parent !== options.state.defaultBranch) {
+    if (seen.has(parent)) {
+      throw new CliError(`Stack contains a cycle at \`${parent}\`.`);
+    }
+    seen.add(parent);
+    const parentRecord = options.state.branches[parent];
+    if (!parentRecord?.pullRequestId) {
+      break;
+    }
+    const pr = options.pullRequests.get(parentRecord.pullRequestId);
+    if (pr?.status !== "completed" || pr.sourceBranch !== parent) {
+      break;
+    }
+    parent = pr.targetBranch;
+  }
+  return parent;
+}
+
+function unsafeAbsorptionTarget(
+  state: StackState,
+  branch: string,
+  into: string,
+): "untracked-target" | "cyclic-target" | undefined {
+  if (into === state.defaultBranch) {
+    return undefined;
+  }
+  if (into === branch || descendantsOf(state, branch).includes(into)) {
+    return "cyclic-target";
+  }
+  if (!(into in state.branches)) {
+    return "untracked-target";
+  }
+  return undefined;
 }
 
 function mergeChildren(state: StackState, branch: string): MergeChild[] {

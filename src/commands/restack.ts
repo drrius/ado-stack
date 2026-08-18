@@ -18,7 +18,11 @@ import { resolveRestackWorktrees, restackRebaseGit } from "../stack/worktrees.ts
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
 import { formatBranch } from "../ui/format.ts";
 import { type AppContext, requireState, resolveAdoAccess } from "./context.ts";
-import { loadTrackedSnapshots, retargetStackPullRequest } from "./pull-requests.ts";
+import {
+  loadTrackedSnapshots,
+  requireCompleteSnapshots,
+  retargetStackPullRequest,
+} from "./pull-requests.ts";
 import { reconcileCompletedMerges } from "./reconcile.ts";
 
 export async function previewRestack(ctx: AppContext): Promise<RestackPlanState> {
@@ -308,5 +312,5 @@ async function loadSnapshots(
       "Azure DevOps authentication is required to restack safely after merges.\n\nRun `ado-stack auth login`, then retry `ado-stack restack`.",
     );
   }
-  return loadTrackedSnapshots(access.client, state);
+  return requireCompleteSnapshots(await loadTrackedSnapshots(access.client, state));
 }
