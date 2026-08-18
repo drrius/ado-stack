@@ -13,7 +13,7 @@ A stack is a forest of ordinary Git branches: each branch has one parent, the bo
 
 ## Detection and setup
 
-Applies only inside a Git repo whose remote is Azure DevOps (`dev.azure.com` / `visualstudio.com`). Check: `git remote get-url origin`.
+Applies only inside a Git repo with an Azure DevOps remote (`dev.azure.com` / `visualstudio.com`). Check every remote, not just `origin` — the CLI itself accepts any remote and merely prefers `origin`: `git remote -v`.
 
 Always disable the interactive UI first — a bare `ado-stack` at a TTY opens a TUI:
 
@@ -47,8 +47,8 @@ ado-stack submit            # pushes parent-before-child; opens/updates PRs targ
 
 ```bash
 ado-stack status --json                 # nested forest: branches, parents, PR id/state/url
-ado-stack status --json --preflight     # adds per-branch restack prediction:
-                                        #   preflight.kind = "clean" | "conflicts" (with files[]) | "error"
+ado-stack status --json --preflight     # adds per-branch restack prediction, preflight.kind =
+                                        #   "not-needed" | "clean" | "conflicts" (with files[]) | "error"
 ado-stack restack --status --json       # one object: { plan, conflictBranch, rebase }
                                         #   rebase: { inProgress: false } or
                                         #   { inProgress: true, worktreePath, conflictedFiles }
@@ -79,11 +79,11 @@ Events: `plan` (ordered steps `{branch, onto, status}`), `up-to-date`, `step-sta
 
 On a `conflict` event:
 
-1. `cd` into `worktreePath` from the event — the rebase may be running in a different worktree than the main checkout.
+1. Work inside `worktreePath` from the event — the rebase may be running in a different worktree than the main checkout.
 2. Resolve the conflict markers in each file listed in `files`.
 3. `git add <file>` for each resolved file.
-4. `git -c core.editor=true rebase --continue` in that worktree.
-5. `ado-stack restack --continue --json` — resumes the plan and pushes.
+4. `git -c core.editor=true rebase --continue` in that worktree. A branch that replays several commits can conflict again here with **no new ado-stack event**: if this command fails, list the newly conflicted files with `git diff --name-only --diff-filter=U` and repeat steps 2–4 until the Git rebase completes.
+5. Only after the Git rebase has finished, run `ado-stack restack --continue --json` **from the main repository checkout, not from `worktreePath`** — the restack plan lives in the main checkout's `.git`, and a linked worktree cannot see it (use `--cwd <main-checkout>` if needed). This resumes the plan and pushes.
 6. Loop: another `conflict` event repeats these steps; stop on `done`.
 
 If recovery is not possible, `ado-stack restack --abort` aborts the Git rebase and clears the plan. If context was lost mid-conflict, re-read `ado-stack restack --status --json` to find `conflictBranch`, `worktreePath`, and `conflictedFiles`.
@@ -104,6 +104,6 @@ ado-stack checkout <branch-or-pr-number>
 - Never `git push --force` a stack branch yourself. Only ado-stack pushes stack branches, and only with `--force-with-lease` plus a remote-tip check.
 - Never rewrite history on branches you did not create; never rebase or amend stack branches with raw git — use `restack`.
 - Do not "fix" broken state with destructive git commands (`reset --hard`, branch deletion, manual `rebase --abort` outside the recipe above). Use `ado-stack restack --abort`, `ado-stack repair`, or ask the user.
-- A dirty working tree blocks `create`, `checkout`, `restack`, and `submit`. Commit or stash first.
+- Uncommitted changes to tracked files block `create`, `checkout`, `restack`, and `submit` — commit or stash those first. Untracked files are fine; do not stash or delete them. (A stack branch held by *another* worktree is stricter: that worktree must be fully clean before a restack will touch it.)
 - Branch names may carry a configured `branchPrefix`. The short names printed by `status` are accepted by every branch-taking command (`create`, `checkout`, `up`, `restack --stack`, `untrack`).
 - Never write a PAT to files, logs, command arguments, or PR descriptions.
