@@ -30,6 +30,12 @@ describe("CLI flags", () => {
     expect(restack.exitCode).toBe(0);
     expect(restack.stdout).toContain("update its remote");
     expect(restack.stdout).toContain("never submitted");
+
+    const status = await runCli(["status", "--help"], { cwd: process.cwd() });
+    expect(status.exitCode).toBe(0);
+    expect(status.stdout).toContain("--json");
+    expect(status.stdout).toContain("--urls");
+    expect(status.stdout).toContain("--width <n>");
   });
 
   test("rejects unknown flags and PATs on argv", async () => {

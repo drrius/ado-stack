@@ -111,10 +111,15 @@ export const COMMAND_SPECS: CommandSpec[] = [
     name: "status",
     group: "daily",
     summary: "Show local and Azure DevOps stack state",
-    usage: ["ado-stack status"],
+    usage: ["ado-stack status [--json] [--urls] [--width <n>]"],
     detail:
-      "Print the stack forest from trunk, pull request state, and whether restack is needed. Completed pull requests are absorbed before the forest is printed.",
-    flags: [{ name: "help", kind: "boolean" }],
+      "Print the stack forest from trunk, one line per branch. Completed pull requests are absorbed first. Fits the terminal width, or 100 columns when the width is unknown. --json prints the same forest as nested objects on stdout only.",
+    flags: [
+      { name: "json", kind: "boolean" },
+      { name: "urls", kind: "boolean" },
+      { name: "width", kind: "string", valueName: "n" },
+      { name: "help", kind: "boolean" },
+    ],
   },
   {
     name: "up",

@@ -1,47 +1,60 @@
 import type { AdoPullRequest } from "../ado/types.ts";
+import type { GitRepo } from "../git/git.ts";
 import { stackOrder } from "../stack/graph.ts";
 import { restackNeeded } from "../stack/ownership.ts";
 import { type PullRequestSnapshot, effectiveParent, resolveOntoSha } from "../stack/restack.ts";
 import type { StackState } from "../state/schema.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
+import { createLogger } from "../ui/log.ts";
 import { logNext } from "../ui/next.ts";
 import { type AppContext, fromRefsHeads, requireState, resolveAdoAccess } from "./context.ts";
 import { reconcileCompletedMerges } from "./reconcile.ts";
+import type {
+  AdoStatusAccess,
+  NextStep,
+  PrDisplay,
+  PrState,
+  StackStatus,
+  StatusRow,
+} from "./status-model.ts";
+import {
+  formatForestRows,
+  parseStatusWidth,
+  resolveStatusWidth,
+  toStatusJson,
+} from "./status-render.ts";
 
-export type PrState = "open" | "approved" | "rejected" | "completed" | "abandoned";
+export type {
+  AdoStatusAccess,
+  ForestLine,
+  NextStep,
+  PrDisplay,
+  PrState,
+  StackStatus,
+  StatusRow,
+} from "./status-model.ts";
+export { forestLayout, prStatusLabel, rowFlags } from "./status-model.ts";
 
-export type PrDisplay =
-  | { kind: "none" }
-  | { kind: "unknown"; id: number }
-  | { kind: "loaded"; id: number; title: string; url: string; state: PrState };
-
-export type StatusRow = {
-  branch: string;
-  parent: string;
-  pr: PrDisplay;
-  isCurrent: boolean;
-  needsRestack: boolean;
-  diverged: boolean;
-};
-
-export type AdoStatusAccess =
-  | { kind: "ready"; loadError?: string }
-  | { kind: "unavailable"; reason: "unauthenticated" | "error"; message: string };
-
-export type NextStep = "auth-login" | "create" | "submit" | "restack" | "none";
-
-export type StackStatus = {
-  rows: StatusRow[];
-  currentBranch: string;
-  defaultBranch: string;
-  ado: AdoStatusAccess;
-  issues: string[];
-  next: NextStep;
-};
-
-export async function statusCommand(ctx: AppContext): Promise<void> {
-  const status = await loadStackStatus(ctx);
-  renderStatus(ctx, status);
+export async function statusCommand(
+  ctx: AppContext,
+  flags: Record<string, string | boolean> = {},
+): Promise<void> {
+  const machine = flags.json === true;
+  const loadCtx = machine
+    ? { ...ctx, log: createLogger({ verbose: false, debug: ctx.debug, stdout: () => {} }) }
+    : ctx;
+  const status = await loadStackStatus(loadCtx);
+  const state = await requireState(ctx);
+  if (flags.json === true) {
+    process.stdout.write(`${JSON.stringify(toStatusJson(status, state))}\n`);
+    return;
+  }
+  const width = resolveStatusWidth({
+    explicit: parseStatusWidth(flags.width),
+    stdoutColumns: process.stdout.columns,
+    columnsEnv: process.env.COLUMNS,
+  });
+  renderStatus(ctx, status, { width, urls: flags.urls === true, state });
 }
 
 export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
@@ -85,8 +98,9 @@ export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
   }
 
   const snapshots = toSnapshots(prs);
-  const rows = order.map((branch) =>
-    buildRow({
+  const rows: StatusRow[] = [];
+  for (const branch of order) {
+    const row = buildRow({
       state,
       branch,
       current,
@@ -94,8 +108,12 @@ export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
       prs,
       snapshots,
       parentTips,
-    }),
-  );
+    });
+    const localTip = parentTips[branch] ?? state.branches[branch]?.lastLocalTip;
+    const remoteTip = state.branches[branch]?.lastKnownRemoteTip;
+    const counts = await divergenceCounts(ctx.git, localTip, remoteTip);
+    rows.push({ ...row, ahead: counts.ahead, behind: counts.behind });
+  }
   const ado: AdoStatusAccess =
     access.status === "ready"
       ? loadError !== undefined
@@ -128,7 +146,11 @@ function nextStep(ado: AdoStatusAccess, rows: StatusRow[]): NextStep {
   return "none";
 }
 
-function renderStatus(ctx: AppContext, status: StackStatus): void {
+function renderStatus(
+  ctx: AppContext,
+  status: StackStatus,
+  options: { width: number; urls: boolean; state: StackState },
+): void {
   const prefix = ctx.config.branchPrefix;
   if (status.ado.kind === "unavailable") {
     ctx.log.info(
@@ -145,12 +167,13 @@ function renderStatus(ctx: AppContext, status: StackStatus): void {
   if (status.rows.length === 0) {
     ctx.log.info("  (empty)");
   }
-  for (const line of forestLayout(status.rows, status.defaultBranch)) {
-    ctx.log.info(`  ${line.prefix}${line.connector}${formatRowLine(line.row, prefix)}`);
-    if (line.row.pr.kind === "loaded") {
-      const hanging = line.connector === "└── " ? "    " : "│   ";
-      ctx.log.info(`  ${line.prefix}${hanging}${line.row.pr.url}`);
-    }
+  for (const line of formatForestRows(status, {
+    width: options.width,
+    urls: options.urls,
+    branchPrefix: prefix,
+    state: options.state,
+  })) {
+    ctx.log.info(line);
   }
   ctx.log.info("");
   ctx.log.info(`Current: ${formatBranch(status.currentBranch, prefix)}`);
@@ -184,69 +207,23 @@ function renderStatus(ctx: AppContext, status: StackStatus): void {
   }
 }
 
-export function prStatusLabel(pr: PrDisplay): string {
-  switch (pr.kind) {
-    case "none":
-      return "LOCAL";
-    case "unknown":
-      return "UNKNOWN";
-    case "loaded":
-      return pr.state.toUpperCase();
-    default: {
-      const _exhaustive: never = pr;
-      throw new Error(`Unhandled PR display ${String(_exhaustive)}`);
-    }
+async function divergenceCounts(
+  git: GitRepo,
+  localTip: string | undefined,
+  remoteTip: string | undefined,
+): Promise<{ ahead: number; behind: number }> {
+  if (!localTip || !remoteTip || localTip === remoteTip) {
+    return { ahead: 0, behind: 0 };
   }
-}
-
-export function rowFlags(row: StatusRow): string[] {
-  const flags: string[] = [];
-  if (row.isCurrent) {
-    flags.push("current");
+  try {
+    const [aheadCommits, behindCommits] = await Promise.all([
+      git.getCommitsBetween(remoteTip, localTip),
+      git.getCommitsBetween(localTip, remoteTip),
+    ]);
+    return { ahead: aheadCommits.length, behind: behindCommits.length };
+  } catch {
+    return { ahead: 0, behind: 0 };
   }
-  if (row.needsRestack) {
-    flags.push("↑ restack needed");
-  } else if (row.pr.kind === "loaded") {
-    flags.push("✓ synced");
-  }
-  if (row.diverged) {
-    flags.push("local/remote diverge");
-  }
-  return flags;
-}
-
-export function forestLayout(
-  rows: StatusRow[],
-  defaultBranch: string,
-): Array<{ prefix: string; connector: string; row: StatusRow }> {
-  const byParent = new Map<string, StatusRow[]>();
-  for (const row of rows) {
-    const list = byParent.get(row.parent) ?? [];
-    list.push(row);
-    byParent.set(row.parent, list);
-  }
-  const lines: Array<{ prefix: string; connector: string; row: StatusRow }> = [];
-  const walk = (parent: string, prefix: string): void => {
-    const children = byParent.get(parent) ?? [];
-    for (const [index, row] of children.entries()) {
-      if (!row) {
-        continue;
-      }
-      const last = index === children.length - 1;
-      lines.push({ prefix, connector: last ? "└── " : "├── ", row });
-      walk(row.branch, `${prefix}${last ? "    " : "│   "}`);
-    }
-  };
-  walk(defaultBranch, "");
-  return lines;
-}
-
-function formatRowLine(row: StatusRow, prefix: string): string {
-  const prLabel = row.pr.kind === "none" ? "no-pr" : `#${row.pr.id}`;
-  const name = formatBranch(row.branch, prefix);
-  const status = prStatusLabel(row.pr);
-  const title = row.pr.kind === "loaded" && row.pr.title ? `  ${row.pr.title}` : "";
-  return `${prLabel} ${name}  ${status}  ${rowFlags(row).join("  ")}${title}`.trimEnd();
 }
 
 function toSnapshots(prs: Map<number, AdoPullRequest>): Map<number, PullRequestSnapshot> {
@@ -311,6 +288,8 @@ function buildRow(options: {
     isCurrent: options.branch === options.current,
     needsRestack,
     diverged,
+    ahead: 0,
+    behind: 0,
   };
 }
 
