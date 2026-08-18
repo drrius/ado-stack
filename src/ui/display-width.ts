@@ -35,7 +35,12 @@ function inRanges(codePoint: number, ranges: ReadonlyArray<readonly [number, num
 }
 
 function codePointWidth(codePoint: number): number {
-  if (codePoint === 0x200b || codePoint === 0x200c || codePoint === 0x200d || codePoint === 0xfeff) {
+  if (
+    codePoint === 0x200b ||
+    codePoint === 0x200c ||
+    codePoint === 0x200d ||
+    codePoint === 0xfeff
+  ) {
     return 0;
   }
   if (inRanges(codePoint, ZERO_WIDTH_RANGES)) {

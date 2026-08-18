@@ -197,7 +197,12 @@ function fitStatusRow(parts: {
     const withoutUrl = renderStatusRow(parts, parts.branch, parts.title, "");
     const urlRoom = parts.width - displayWidth(withoutUrl) - 2;
     if (urlRoom > 0) {
-      return renderStatusRow(parts, parts.branch, parts.title, ellipsizeToWidth(parts.url, urlRoom));
+      return renderStatusRow(
+        parts,
+        parts.branch,
+        parts.title,
+        ellipsizeToWidth(parts.url, urlRoom),
+      );
     }
   }
 
