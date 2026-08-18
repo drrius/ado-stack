@@ -174,6 +174,39 @@ describe("reconstructForest", () => {
     expect(result.state.branches.child?.parent).toBe("base");
   });
 
+  test("does not walk a completed PR parent when an active PR retargeted away", () => {
+    const result = reconstructForest({
+      base: base(),
+      pullRequests: [
+        { ...pr(1, "stale-parent", "main"), status: "completed" },
+        { ...pr(2, "feat", "stale-parent"), status: "completed" },
+        pr(3, "feat", "main"),
+        pr(4, "leaf", "main"),
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches.feat?.parent).toBe("main");
+    expect(result.state.branches.feat?.pullRequestId).toBe(3);
+    expect(result.state.branches["stale-parent"]).toBeUndefined();
+    expect(result.state.branches.leaf?.parent).toBe("main");
+  });
+
+  test("still keeps a completed parent that an active child targets", () => {
+    const result = reconstructForest({
+      base: base(),
+      pullRequests: [{ ...pr(1, "base", "main"), status: "completed" }, pr(2, "child", "base")],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches.base?.pullRequestId).toBe(1);
+    expect(result.state.branches.child?.parent).toBe("base");
+  });
+
   test("does not treat the source tip as lastRestackBase when properties are absent", () => {
     const result = reconstructForest({
       base: base(),

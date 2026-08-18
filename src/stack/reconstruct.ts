@@ -202,7 +202,12 @@ function adoptablePullRequests(
       return;
     }
     needed.add(branch);
-    for (const pr of prs) {
+    const choice = choosePullRequestForSource(prs);
+    if (choice.ok) {
+      walk(choice.pr.properties?.parent ?? choice.pr.targetBranch, seen);
+      return;
+    }
+    for (const pr of prs.filter((item) => item.status === "active")) {
       walk(pr.properties?.parent ?? pr.targetBranch, seen);
     }
   };
