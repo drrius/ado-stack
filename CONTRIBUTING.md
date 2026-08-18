@@ -49,7 +49,7 @@ Keep diffs small. Linear stacks only. No GitHub/GitLab support, telemetry, or au
 
 `install.sh` downloads binaries from GitHub Releases. A public repo with no published release prints `release not found`.
 
-Every pull request targeting `main` must bump `package.json` `version` to a greater strict `X.Y.Z`. The `require-version-bump` workflow fails the PR if the version is unchanged, lower, or not a strict `X.Y.Z`.
+Every pull request targeting `main` must bump `package.json` `version` to a greater strict `X.Y.Z`. The `require-version-bump` workflow fails the PR if the version is unchanged, lower, or not a strict `X.Y.Z`. A push to `main` re-runs that check on open PRs. That stops a stale green check from merging after `main` already took the same version. Merge queues re-check at merge time.
 
 Merge to `main` still tags via `tag-release` when the version moved up. `tag-release` creates the lightweight `vX.Y.Z` tag when the new version is greater than the latest `v*` tag and that tag does not already exist. Reverts and equal or lower versions are no-ops. A duplicate tag is a no-op.
 
