@@ -1,0 +1,44 @@
+name: tag-release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disable Git CRLF conversion
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Decide whether to tag
+        id: decide
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: bun run scripts/tag-release.ts
+      - name: Create tag and start release
+        if: steps.decide.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.decide.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists; leaving it in place."
+            exit 0
+          fi
+          git tag "${TAG}" "${GITHUB_SHA}"
+          git push origin "refs/tags/${TAG}"
+          # GITHUB_TOKEN tag pushes do not start other workflows. Dispatch
+          # the existing release job on the new tag so binaries still publish.
+          gh workflow run release.yml --ref "${TAG}"
