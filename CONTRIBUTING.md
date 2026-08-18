@@ -49,11 +49,19 @@ Keep diffs small. Linear stacks only. No GitHub/GitLab support, telemetry, or au
 
 `install.sh` downloads binaries from GitHub Releases. A public repo with no published release prints `release not found`.
 
-Bump `package.json` `version`, then tag that commit:
+Humans decide when to release. Bump `package.json` `version` to a strict `X.Y.Z` (no pre-release suffix) and merge that change to `main`. The `tag-release` workflow then creates the lightweight `vX.Y.Z` tag on that commit when:
+
+- `package.json` `version` changed versus the previous commit on `main`
+- the new version is greater than the latest existing `v*` tag
+- that tag does not already exist
+
+Feature merges that do not bump the version do not create a tag. Reverts and equal or lower versions are no-ops. A duplicate tag is a no-op.
+
+The `release` workflow still compiles binaries, writes `SHA256SUMS`, and publishes the GitHub Release when the tag exists.
+
+If you need to tag by hand:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.2
+git push origin v0.2.2
 ```
-
-The `release` workflow compiles binaries, writes `SHA256SUMS`, and publishes the GitHub Release.
