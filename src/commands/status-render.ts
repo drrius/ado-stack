@@ -24,6 +24,12 @@ export type StatusTextOptions = {
 
 export type StatusJsonPullRequestStatus = "none" | "unknown" | PrState;
 
+export type StatusPreflight =
+  | { kind: "not-needed" }
+  | { kind: "clean" }
+  | { kind: "conflicts"; files: string[] }
+  | { kind: "error"; message: string };
+
 export type StatusJsonNode = {
   branch: string;
   parent: string;
@@ -37,6 +43,7 @@ export type StatusJsonNode = {
   ahead: number;
   behind: number;
   children: StatusJsonNode[];
+  preflight?: StatusPreflight;
 };
 
 export type StatusJson = {

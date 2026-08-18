@@ -262,6 +262,32 @@ export class GitRepo {
     await this.run(["rebase", "--onto", options.newBase, options.oldBase, options.branch]);
   }
 
+  async commitTree(tree: string, parents: readonly string[], message: string): Promise<string> {
+    const args = ["commit-tree", tree];
+    for (const parent of parents) {
+      args.push("-p", parent);
+    }
+    args.push("-m", message);
+    return this.text(args);
+  }
+
+  async mergeTree(options: {
+    mergeBase: string;
+    ours: string;
+    theirs: string;
+  }): Promise<GitRunResult> {
+    return this.run(
+      [
+        "merge-tree",
+        "--write-tree",
+        `--merge-base=${options.mergeBase}`,
+        options.ours,
+        options.theirs,
+      ],
+      { allowFailure: true },
+    );
+  }
+
   async mergeBase(a: string, b: string): Promise<string | undefined> {
     const result = await this.run(["merge-base", a, b], { allowFailure: true });
     if (result.exitCode !== 0) {

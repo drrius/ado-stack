@@ -1,4 +1,5 @@
 import type { AdoPullRequest } from "../ado/types.ts";
+import { CliError } from "../errors/cli-error.ts";
 import type { GitRepo } from "../git/git.ts";
 import { stackOrder } from "../stack/graph.ts";
 import { restackNeeded } from "../stack/ownership.ts";
@@ -17,6 +18,8 @@ import type {
   StackStatus,
   StatusRow,
 } from "./status-model.ts";
+import { openStatusPage, statusPagePath, writeStatusPage } from "./status-page.ts";
+import { attachPreflight } from "./status-preflight.ts";
 import {
   formatForestRows,
   parseStatusWidth,
@@ -39,15 +42,37 @@ export async function statusCommand(
   ctx: AppContext,
   flags: Record<string, string | boolean> = {},
 ): Promise<void> {
-  const machine = flags.json === true;
-  const loadCtx = machine
-    ? { ...ctx, log: createLogger({ verbose: false, debug: ctx.debug, stdout: () => {} }) }
-    : ctx;
+  const wantsJson = flags.json === true;
+  const wantsWeb = flags.web === true;
+  if (wantsJson && wantsWeb) {
+    throw new CliError("Use --json or --web, not both.");
+  }
+  const loadCtx =
+    wantsJson || wantsWeb
+      ? { ...ctx, log: createLogger({ verbose: false, debug: ctx.debug, stdout: () => {} }) }
+      : ctx;
   const status = await loadStackStatus(loadCtx);
   const state = await requireState(ctx);
-  if (flags.json === true) {
-    process.stdout.write(`${JSON.stringify(toStatusJson(status, state))}\n`);
-    return;
+  if (wantsJson || wantsWeb || flags.preflight === true) {
+    let model = toStatusJson(status, state);
+    if (wantsWeb || flags.preflight === true) {
+      model = await attachPreflight(ctx.git, state, model);
+    }
+    if (wantsJson) {
+      process.stdout.write(`${JSON.stringify(model)}\n`);
+      return;
+    }
+    if (wantsWeb) {
+      const dest = statusPagePath(ctx.gitDir);
+      await writeStatusPage(dest, model);
+      try {
+        await openStatusPage(dest);
+      } catch {
+        ctx.log.warn(`Could not open ${dest} in a browser.`);
+      }
+      process.stdout.write(`${dest}\n`);
+      return;
+    }
   }
   const width = resolveStatusWidth({
     explicit: parseStatusWidth(flags.width),
