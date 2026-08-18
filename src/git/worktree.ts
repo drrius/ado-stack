@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+
 export type GitWorktree = {
   path: string;
   branch?: string;
@@ -47,12 +49,26 @@ export function parseWorktreePorcelain(text: string): GitWorktree[] {
 }
 
 export function sameWorktreePath(left: string, right: string): boolean {
+  const resolvedLeft = resolvedWorktreePath(left);
+  const resolvedRight = resolvedWorktreePath(right);
+  if (resolvedLeft !== undefined && resolvedRight !== undefined) {
+    return resolvedLeft === resolvedRight;
+  }
   return normalizeWorktreePath(left) === normalizeWorktreePath(right);
 }
 
 export function normalizeWorktreePath(path: string): string {
-  if (path.length > 1 && path.endsWith("/")) {
-    return path.slice(0, -1);
+  const unified = path.replaceAll("\\", "/");
+  if (unified.length > 1 && unified.endsWith("/")) {
+    return unified.slice(0, -1);
   }
-  return path;
+  return unified;
+}
+
+function resolvedWorktreePath(path: string): string | undefined {
+  try {
+    return normalizeWorktreePath(realpathSync(path));
+  } catch {
+    return undefined;
+  }
 }

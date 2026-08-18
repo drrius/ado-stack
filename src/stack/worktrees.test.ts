@@ -34,7 +34,7 @@ describe("planRestackWorktrees", () => {
         { path: "/repo-b", branch: "B" },
       ],
       branches: ["A", "B"],
-      dirtyPaths: new Set(["/repo-b"]),
+      blockedPaths: new Set(["/repo-b"]),
     });
     expect(plan).toEqual({
       kind: "refuse",
@@ -50,7 +50,7 @@ describe("planRestackWorktrees", () => {
         { path: "/repo-b", branch: "B" },
       ],
       branches: ["A", "B"],
-      dirtyPaths: new Set(),
+      blockedPaths: new Set(),
     });
     expect(plan).toEqual({
       kind: "proceed",
@@ -71,7 +71,7 @@ describe("worktree refusal copy", () => {
     expect(message).toContain("/tmp/ados-probe");
     expect(message).toContain("No branches were rebased or pushed.");
     expect(formatDirtyWorktreeRefusal([{ branch: "B", worktreePath: "/wt" }])).toContain(
-      "uncommitted changes",
+      "not ready",
     );
   });
 });

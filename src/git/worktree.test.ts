@@ -34,4 +34,8 @@ describe("sameWorktreePath", () => {
     expect(sameWorktreePath("/repo", "/repo/")).toBe(true);
     expect(sameWorktreePath("/repo", "/other")).toBe(false);
   });
+
+  test("treats Windows separators as the same worktree", () => {
+    expect(sameWorktreePath("C:/repo/wt", "C:\\repo\\wt")).toBe(true);
+  });
 });

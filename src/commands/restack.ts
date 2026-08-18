@@ -19,7 +19,7 @@ import {
   planRestack,
   resolveOntoSha,
 } from "../stack/restack.ts";
-import { gitWithRebaseInProgress, resolveRestackWorktrees } from "../stack/worktrees.ts";
+import { resolveRestackWorktrees, restackRebaseGit } from "../stack/worktrees.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
 import { formatBranch } from "../ui/format.ts";
 import {
@@ -76,7 +76,11 @@ async function continueRestack(ctx: AppContext): Promise<void> {
   if (!plan) {
     throw new CliError("No restack is in progress.");
   }
-  const rebaseGit = (await gitWithRebaseInProgress(ctx.git)) ?? ctx.git;
+  const rebaseGit =
+    (await restackRebaseGit(
+      ctx.git,
+      plan.steps.filter((step) => step.status !== "done").map((step) => step.branch),
+    )) ?? ctx.git;
   if (await rebaseGit.rebaseInProgress()) {
     const where = sameWorktreePath(rebaseGit.cwd, ctx.git.cwd)
       ? ""
@@ -109,7 +113,11 @@ async function continueRestack(ctx: AppContext): Promise<void> {
 }
 
 async function abortRestack(ctx: AppContext): Promise<void> {
-  const rebaseGit = (await gitWithRebaseInProgress(ctx.git)) ?? ctx.git;
+  const plan = await ctx.stateStore.readRestackPlan();
+  const branches = plan
+    ? plan.steps.filter((step) => step.status !== "done").map((step) => step.branch)
+    : [];
+  const rebaseGit = (await restackRebaseGit(ctx.git, branches)) ?? ctx.git;
   if (await rebaseGit.rebaseInProgress()) {
     await rebaseGit.abortRebase();
     ctx.log.info("Aborted the in-progress Git rebase.");
@@ -155,9 +163,7 @@ async function restoreCheckoutAfter(
   try {
     await action();
   } catch (error) {
-    if (!(error instanceof RestackConflictError)) {
-      await restoreCheckout(git, start);
-    }
+    await restoreCheckout(git, start);
     throw error;
   }
   await restoreCheckout(git, start);

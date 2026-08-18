@@ -34,7 +34,7 @@ export function planRestackWorktrees(options: {
   currentPath: string;
   worktrees: readonly GitWorktree[];
   branches: readonly string[];
-  dirtyPaths: ReadonlySet<string>;
+  blockedPaths: ReadonlySet<string>;
 }): RestackWorktreePlan {
   const holds: HeldStackBranch[] = [];
   const sites: RestackWorktreeSite[] = [];
@@ -44,7 +44,7 @@ export function planRestackWorktrees(options: {
       sites.push({ branch, path: options.currentPath });
       continue;
     }
-    if (options.dirtyPaths.has(normalizeWorktreePath(holder.path))) {
+    if (options.blockedPaths.has(normalizeWorktreePath(holder.path))) {
       holds.push({ branch, worktreePath: holder.path });
       continue;
     }
@@ -63,7 +63,44 @@ export function formatHeldWorktreeRefusal(holds: readonly HeldStackBranch[]): st
 
 export function formatDirtyWorktreeRefusal(holds: readonly HeldStackBranch[]): string {
   const listed = holds.map((hold) => `  \`${hold.branch}\`\n    ${hold.worktreePath}`).join("\n");
-  return `Cannot restack because these worktrees have uncommitted changes:\n\n${listed}\n\nCommit or stash in each worktree first. ado-stack will not rebase a dirty worktree, and it will not move a held branch with plumbing.\n\nNo branches were rebased or pushed.`;
+  return `Cannot restack because these worktrees are not ready:\n\n${listed}\n\nCommit or stash local changes, and finish or abort any rebase in those worktrees first. ado-stack will not rebase a dirty worktree, and it will not move a held branch with plumbing.\n\nNo branches were rebased or pushed.`;
+}
+
+export async function restackSitePaths(
+  git: GitRepo,
+  branches: readonly string[],
+): Promise<string[]> {
+  const currentPath = await git.toplevel();
+  const worktrees = await git.listWorktrees();
+  return [
+    currentPath,
+    ...heldBranchesOutsideCurrent({ currentPath, worktrees, branches }).map(
+      (hold) => hold.worktreePath,
+    ),
+  ];
+}
+
+export async function firstRebaseAmong(paths: readonly string[]): Promise<GitRepo | undefined> {
+  const seen = new Set<string>();
+  for (const path of paths) {
+    const key = normalizeWorktreePath(path);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    const candidate = new GitRepo(path);
+    if (await candidate.rebaseInProgress()) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+export async function restackRebaseGit(
+  git: GitRepo,
+  branches: readonly string[],
+): Promise<GitRepo | undefined> {
+  return firstRebaseAmong(await restackSitePaths(git, branches));
 }
 
 export async function resolveRestackWorktrees(
@@ -75,18 +112,19 @@ export async function resolveRestackWorktrees(
   }
   const currentPath = await git.toplevel();
   const worktrees = await git.listWorktrees();
-  const dirtyPaths = new Set<string>();
+  const blockedPaths = new Set<string>();
   for (const hold of heldBranchesOutsideCurrent({ currentPath, worktrees, branches })) {
-    const status = await new GitRepo(hold.worktreePath).workingTreeStatus();
-    if (!status.clean) {
-      dirtyPaths.add(normalizeWorktreePath(hold.worktreePath));
+    const site = new GitRepo(hold.worktreePath);
+    const status = await site.workingTreeStatus();
+    if (!status.clean || (await site.rebaseInProgress())) {
+      blockedPaths.add(normalizeWorktreePath(hold.worktreePath));
     }
   }
   const plan = planRestackWorktrees({
     currentPath,
     worktrees,
     branches,
-    dirtyPaths,
+    blockedPaths,
   });
   switch (plan.kind) {
     case "refuse":
@@ -98,14 +136,4 @@ export async function resolveRestackWorktrees(
       return _exhaustive;
     }
   }
-}
-
-export async function gitWithRebaseInProgress(git: GitRepo): Promise<GitRepo | undefined> {
-  for (const worktree of await git.listWorktrees()) {
-    const candidate = new GitRepo(worktree.path);
-    if (await candidate.rebaseInProgress()) {
-      return candidate;
-    }
-  }
-  return undefined;
 }
