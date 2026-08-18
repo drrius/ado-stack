@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CliError } from "./errors/cli-error.ts";
@@ -249,6 +249,41 @@ describe("applyUpdate", () => {
     });
     expect(await readFile(destPath, "utf8")).toBe(payload);
     expect(await readFile(`${destPath}.old`, "utf8")).toBe("old-binary");
+  });
+
+  test("restores the Windows dest when the staged rename fails", async () => {
+    const dir = await tempDir();
+    const destPath = join(dir, "ado-stack.exe");
+    await writeFile(destPath, "old-binary");
+    const payload = "new-windows-bytes";
+    const hash = new Bun.CryptoHasher("sha256").update(payload).digest("hex");
+    let moves = 0;
+    try {
+      await applyUpdate({
+        destPath,
+        version: "9.9.9",
+        platform: "win32",
+        arch: "x64",
+        moveFile: async (from, to) => {
+          moves += 1;
+          if (moves === 2) {
+            throw new Error("disk full");
+          }
+          await rename(from, to);
+        },
+        fetch: fakeGithubFetch(() => ({
+          tag: "v9.9.9",
+          files: {
+            "ado-stack-windows-x64.exe": payload,
+            SHA256SUMS: `${hash}  ado-stack-windows-x64.exe\n`,
+          },
+        })),
+      });
+      throw new Error("expected replace to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CliError);
+    }
+    expect(await readFile(destPath, "utf8")).toBe("old-binary");
   });
 
   test("replace failures name the platform install script", async () => {

@@ -141,6 +141,7 @@ export async function applyUpdate(options: {
   repository?: string;
   platform?: NodeJS.Platform;
   arch?: string;
+  moveFile?: (from: string, to: string) => Promise<void>;
 }): Promise<{ latest: string; destPath: string }> {
   const latest = parseReleaseVersion(options.version);
   if (latest === undefined) {
@@ -176,6 +177,7 @@ export async function applyUpdate(options: {
     destPath: options.destPath,
     staged,
     platform: options.platform ?? process.platform,
+    moveFile: options.moveFile ?? rename,
   });
   return { latest, destPath: options.destPath };
 }
@@ -184,15 +186,21 @@ async function replaceInstalledBinary(options: {
   destPath: string;
   staged: string;
   platform: NodeJS.Platform;
+  moveFile: (from: string, to: string) => Promise<void>;
 }): Promise<void> {
+  const previous = `${options.destPath}.old`;
+  let movedAside = false;
   try {
     if (options.platform === "win32" && (await Bun.file(options.destPath).exists())) {
-      const previous = `${options.destPath}.old`;
       await rm(previous, { force: true });
-      await rename(options.destPath, previous);
+      await options.moveFile(options.destPath, previous);
+      movedAside = true;
     }
-    await rename(options.staged, options.destPath);
+    await options.moveFile(options.staged, options.destPath);
   } catch (error) {
+    if (movedAside) {
+      await options.moveFile(previous, options.destPath).catch(() => undefined);
+    }
     throw new CliError("Could not replace the installed ado-stack binary.", {
       hint: `Install manually:\n  ${installHint(options.platform)}`,
       cause: error,
