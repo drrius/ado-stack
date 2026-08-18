@@ -156,4 +156,73 @@ describe("status sync flags", () => {
       await repo.cleanup();
     }
   }, 30_000);
+
+  test("status --web writes an offline page and preflight matches merge-tree", async () => {
+    const repo = await createTempRepo();
+    try {
+      await runCli(
+        [
+          "init",
+          "--organization",
+          "https://dev.azure.com/example",
+          "--project",
+          "P",
+          "--repository",
+          "R",
+        ],
+        { cwd: repo.dir },
+      );
+      await runCli(["create", "A"], { cwd: repo.dir });
+      await writeCommit(repo.git, "file.txt", "parent\n", "A");
+      await runCli(["create", "B"], { cwd: repo.dir });
+      await writeCommit(repo.git, "file.txt", "child\n", "B");
+      await repo.git.checkout("A");
+      await writeCommit(repo.git, "file.txt", "parent-changed\n", "A2");
+
+      const json = await runCli(["status", "--json", "--preflight"], { cwd: repo.dir });
+      expect(json.exitCode).toBe(0);
+      const parsed = JSON.parse(json.stdout) as {
+        forest: Array<{
+          branch: string;
+          needsRestack: boolean;
+          preflight?: { kind: string; files?: string[] };
+          children: Array<{
+            branch: string;
+            needsRestack: boolean;
+            preflight?: { kind: string; files?: string[] };
+          }>;
+        }>;
+      };
+      const child = parsed.forest[0]?.children[0];
+      expect(child?.branch).toBe("B");
+      expect(child?.needsRestack).toBe(true);
+      expect(child?.preflight?.kind).toBe("conflicts");
+      expect(child?.preflight?.files).toEqual(["file.txt"]);
+
+      const parentSha = await repo.git.getBranchTip("A");
+      const branchSha = await repo.git.getBranchTip("B");
+      const mergeBase = await repo.git.mergeBase(parentSha, branchSha);
+      expect(mergeBase).toBeTruthy();
+      const tree = await repo.git.mergeTree({
+        mergeBase: mergeBase!,
+        ours: parentSha,
+        theirs: branchSha,
+      });
+      expect(tree.exitCode).not.toBe(0);
+      expect(tree.stdout).toContain("CONFLICT (content): Merge conflict in file.txt");
+
+      const web = await runCli(["status", "--web"], { cwd: repo.dir });
+      expect(web.exitCode).toBe(0);
+      const dest = web.stdout.trim();
+      expect(dest.endsWith("ado-stack/status.html")).toBe(true);
+      const html = await Bun.file(dest).text();
+      expect(html).toContain("file.txt");
+      expect(html).toContain("conflicts in");
+      expect(html).toContain(":root");
+      expect(html).toContain("prefers-color-scheme: dark");
+      expect(html).not.toContain("https://cdn");
+    } finally {
+      await repo.cleanup();
+    }
+  }, 30_000);
 });

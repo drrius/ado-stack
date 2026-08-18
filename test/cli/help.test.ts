@@ -34,6 +34,7 @@ describe("CLI flags", () => {
     const status = await runCli(["status", "--help"], { cwd: process.cwd() });
     expect(status.exitCode).toBe(0);
     expect(status.stdout).toContain("--json");
+    expect(status.stdout).toContain("--web");
     expect(status.stdout).toContain("--urls");
     expect(status.stdout).toContain("--width <n>");
   });

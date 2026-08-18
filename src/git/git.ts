@@ -262,6 +262,23 @@ export class GitRepo {
     await this.run(["rebase", "--onto", options.newBase, options.oldBase, options.branch]);
   }
 
+  async mergeTree(options: {
+    mergeBase: string;
+    ours: string;
+    theirs: string;
+  }): Promise<GitRunResult> {
+    return this.run(
+      [
+        "merge-tree",
+        "--write-tree",
+        `--merge-base=${options.mergeBase}`,
+        options.ours,
+        options.theirs,
+      ],
+      { allowFailure: true },
+    );
+  }
+
   async mergeBase(a: string, b: string): Promise<string | undefined> {
     const result = await this.run(["merge-base", a, b], { allowFailure: true });
     if (result.exitCode !== 0) {
