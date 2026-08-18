@@ -2,6 +2,7 @@ import { hydrateForestTips } from "../stack/hydrate.ts";
 import { formatReconstructConflicts } from "../stack/reconstruct.ts";
 import { type AppContext, createAdoClient, requireState } from "./context.ts";
 import { reconstructFromAdo } from "./init.ts";
+import { reconcileCompletedMerges } from "./reconcile.ts";
 
 export async function repairCommand(ctx: AppContext): Promise<void> {
   const state = await requireState(ctx);
@@ -14,12 +15,13 @@ export async function repairCommand(ctx: AppContext): Promise<void> {
     );
     return;
   }
-  await hydrateForestTips(ctx.git, rebuilt.state);
-  const after = JSON.stringify(rebuilt.state);
+  const hydrated = await hydrateForestTips(ctx.git, rebuilt.state);
+  const reconciled = await reconcileCompletedMerges(ctx, hydrated);
+  const after = JSON.stringify(reconciled);
   if (after === before) {
     ctx.log.success("Local stack state already matches Azure DevOps parentage.");
     return;
   }
-  await ctx.stateStore.write(rebuilt.state);
+  await ctx.stateStore.write(reconciled);
   ctx.log.success("Rebuilt local stack state from Azure DevOps metadata.");
 }

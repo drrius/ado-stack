@@ -37,6 +37,9 @@ describe("status sync flags", () => {
       const status = await runCli(["status"], { cwd: repo.dir });
       expect(status.exitCode).toBe(0);
       expect(status.stdout).toContain("local/remote diverge");
+      expect(status.stdout).toContain(
+        "Skipped merge reconcile: Not authenticated to Azure DevOps.",
+      );
       expect(status.stdout).toContain("Not authenticated to Azure DevOps.");
       expect(status.stdout).toContain("Next: ado-stack auth login");
       const row = status.stdout.split("\n").find((line) => line.includes("#9"));

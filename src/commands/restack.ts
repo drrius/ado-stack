@@ -1,9 +1,3 @@
-import { targetBranchGoneMessage } from "../ado/errors.ts";
-import {
-  decodeStackProperties,
-  encodeStackProperties,
-  propertyPatches,
-} from "../ado/properties.ts";
 import { CliError } from "../errors/cli-error.ts";
 import { GitRepo } from "../git/git.ts";
 import { sameWorktreePath } from "../git/worktree.ts";
@@ -23,19 +17,16 @@ import {
 import { resolveRestackWorktrees, restackRebaseGit } from "../stack/worktrees.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
 import { formatBranch } from "../ui/format.ts";
-import {
-  type AppContext,
-  fromRefsHeads,
-  refsHeads,
-  requireState,
-  resolveAdoAccess,
-} from "./context.ts";
+import { type AppContext, requireState, resolveAdoAccess } from "./context.ts";
+import { loadTrackedSnapshots, retargetStackPullRequest } from "./pull-requests.ts";
+import { reconcileCompletedMerges } from "./reconcile.ts";
 
 export async function previewRestack(ctx: AppContext): Promise<RestackPlanState> {
   const state = await requireState(ctx);
   await ctx.git.fetch(state.remoteName);
-  const pullRequests = await loadSnapshots(ctx, state);
-  return planRestack({ git: ctx.git, state, pullRequests });
+  const reconciled = await reconcileCompletedMerges(ctx, state);
+  const pullRequests = await loadSnapshots(ctx, reconciled);
+  return planRestack({ git: ctx.git, state: reconciled, pullRequests });
 }
 
 export async function restackCommand(
@@ -58,8 +49,9 @@ export async function restackCommand(
     );
   }
   await ctx.git.fetch(state.remoteName);
-  const pullRequests = await loadSnapshots(ctx, state);
-  const plan = await planRestack({ git: ctx.git, state, pullRequests });
+  const reconciled = await reconcileCompletedMerges(ctx, state);
+  const pullRequests = await loadSnapshots(ctx, reconciled);
+  const plan = await planRestack({ git: ctx.git, state: reconciled, pullRequests });
   if (plan.steps.length === 0) {
     ctx.log.info("Stack is already up to date.");
     return;
@@ -69,7 +61,7 @@ export async function restackCommand(
     plan.steps.map((step) => step.branch),
   );
   await ctx.stateStore.writeRestackPlan(plan);
-  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, state, plan));
+  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, reconciled, plan));
 }
 
 async function continueRestack(ctx: AppContext): Promise<void> {
@@ -281,46 +273,18 @@ async function retargetIfNeeded(
       `${access.message}\n\nAzure DevOps access is required to retarget pull requests safely during restack.`,
     );
   }
-  const ado = access.client;
-  const pr = await ado.getPullRequest(record.pullRequestId);
-  if (pr.status !== "active") {
-    throw new CliError(
-      `Cannot retarget PR #${pr.pullRequestId} because it is ${pr.status}. Expected an active PR from \`${step.branch}\`.`,
-    );
-  }
-  if (fromRefsHeads(pr.sourceRefName) !== step.branch) {
-    throw new CliError(
-      `Cannot retarget PR #${pr.pullRequestId}: source is ${fromRefsHeads(pr.sourceRefName)}, expected ${step.branch}.`,
-    );
-  }
-  if (fromRefsHeads(pr.targetRefName) === step.retargetPrTo) {
+  const didRetarget = await retargetStackPullRequest({
+    ado: access.client,
+    state,
+    branch: step.branch,
+    pullRequestId: record.pullRequestId,
+    target: step.retargetPrTo,
+  });
+  if (!didRetarget) {
     return;
   }
-  try {
-    await ado.updatePullRequest(pr.pullRequestId, { targetRefName: refsHeads(step.retargetPrTo) });
-  } catch (error) {
-    throw new CliError(targetBranchGoneMessage(step.retargetPrTo), { cause: error });
-  }
-  const previous = await ado.getPullRequestProperties(pr.pullRequestId);
-  const existing = decodeStackProperties(previous);
-  const stackId = state.stackId ?? existing?.stackId;
-  if (stackId) {
-    await ado.updatePullRequestProperties(
-      pr.pullRequestId,
-      propertyPatches(
-        encodeStackProperties({
-          version: existing?.version ?? "1",
-          stackId,
-          parent: step.retargetPrTo,
-          branch: step.branch,
-          lastRestackBase: record.lastRestackBase,
-        }),
-        previous,
-      ),
-    );
-  }
   ctx.log.success(
-    `PR #${pr.pullRequestId} ${formatBranch(step.branch, ctx.config.branchPrefix)} → ${formatBranch(step.retargetPrTo, ctx.config.branchPrefix)}`,
+    `PR #${record.pullRequestId} ${formatBranch(step.branch, ctx.config.branchPrefix)} → ${formatBranch(step.retargetPrTo, ctx.config.branchPrefix)}`,
   );
 }
 
@@ -328,7 +292,6 @@ async function loadSnapshots(
   ctx: AppContext,
   state: StackState,
 ): Promise<Map<number, PullRequestSnapshot>> {
-  const snapshots = new Map<number, PullRequestSnapshot>();
   const branches = stackOrder(state);
   const pullRequestIds = branches.flatMap((branch) => {
     const id = state.branches[branch]?.pullRequestId;
@@ -338,33 +301,12 @@ async function loadSnapshots(
   if (access.status === "unavailable") {
     if (pullRequestIds.length === 0) {
       ctx.log.debug(`${access.message} Restack has no pull request state to resolve.`);
-      return snapshots;
+      return new Map();
     }
     ctx.log.warn(access.message);
     throw new CliError(
       "Azure DevOps authentication is required to restack safely after merges.\n\nRun `ado-stack auth login`, then retry `ado-stack restack`.",
     );
   }
-  const ado = access.client;
-  for (const branch of branches) {
-    const id = state.branches[branch]?.pullRequestId;
-    if (id === undefined) {
-      continue;
-    }
-    try {
-      const pr = await ado.getPullRequest(id);
-      snapshots.set(id, {
-        id,
-        status: pr.status,
-        sourceBranch: fromRefsHeads(pr.sourceRefName),
-        targetBranch: fromRefsHeads(pr.targetRefName),
-      });
-    } catch (error) {
-      throw new CliError(
-        `Could not load PR #${id} from Azure DevOps.\n\nRestack requires complete pull request state to handle merged parents safely.`,
-        { cause: error },
-      );
-    }
-  }
-  return snapshots;
+  return loadTrackedSnapshots(access.client, state);
 }

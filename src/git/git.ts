@@ -177,6 +177,10 @@ export class GitRepo {
     await this.run(["checkout", "-b", name]);
   }
 
+  async deleteLocalBranch(name: string): Promise<void> {
+    await this.run(["branch", "-D", "--", name]);
+  }
+
   async getBranchTip(name: string): Promise<string> {
     return this.text(["rev-parse", "--verify", `${name}^{commit}`]);
   }

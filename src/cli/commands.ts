@@ -112,7 +112,8 @@ export const COMMAND_SPECS: CommandSpec[] = [
     group: "daily",
     summary: "Show local and Azure DevOps stack state",
     usage: ["ado-stack status"],
-    detail: "Print the stack forest from trunk, pull request state, and whether restack is needed.",
+    detail:
+      "Print the stack forest from trunk, pull request state, and whether restack is needed. Completed pull requests are absorbed before the forest is printed.",
     flags: [{ name: "help", kind: "boolean" }],
   },
   {
@@ -148,7 +149,7 @@ export const COMMAND_SPECS: CommandSpec[] = [
     summary: "Rebase stack branches onto updated parents and update submitted remotes",
     usage: ["ado-stack restack [--continue | --abort]"],
     detail:
-      "Rebase each stack branch onto its live parent and update its remote. Branches that were never submitted are rebased locally only. After a squash merge, retarget the next active pull request. Stops on conflicts and leaves Git rebase state in place. A branch held by another worktree is rebased there when that tree is clean. Dirty worktrees are named and refused before any rebase or push.",
+      "Repair completed pull requests first, then rebase each remaining stack branch onto its live parent and update its remote. Branches that were never submitted are rebased locally only. A completed parent re-parents every child and retargets those pull requests before any rebase. Stops on conflicts and leaves Git rebase state in place. A branch held by another worktree is rebased there when that tree is clean. Dirty worktrees are named and refused before any rebase or push.",
     flags: [
       { name: "continue", kind: "boolean" },
       { name: "abort", kind: "boolean" },

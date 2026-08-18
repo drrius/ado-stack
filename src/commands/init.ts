@@ -12,6 +12,7 @@ import {
 import type { StackState } from "../state/schema.ts";
 import { logNext } from "../ui/next.ts";
 import { type AppContext, createAdoClient, detectRemote, fromRefsHeads } from "./context.ts";
+import { reconcileCompletedMerges } from "./reconcile.ts";
 
 export async function initCommand(
   ctx: AppContext,
@@ -97,6 +98,9 @@ export async function initCommand(
   if (rebuiltState) {
     state = await hydrateForestTips(ctx.git, rebuiltState);
     ctx.log.success("Rebuilt stack state from Azure DevOps pull request metadata.");
+  }
+  if (adoMetadataLoaded) {
+    state = await reconcileCompletedMerges(ctx, state);
   }
 
   await ctx.stateStore.write(state);
