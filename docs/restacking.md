@@ -61,7 +61,11 @@ git rebase --onto B' B2 C
 
 Same operation. `oldBase` is still the recorded parent tip, not "whatever `main` currently is".
 
-## Squash merge
+## Completed merge
+
+Azure DevOps marks a stacked PR completed. Detection is that PR status, not the commit shape. `status`, `init`, `repair`, and `restack` all run the same absorption before any rebase. The user does not run a separate repair command.
+
+A completed parent with several children re-parents every direct child onto the living base (`effectiveParent`, walking other completed ancestors to trunk). Grandchildren keep their own parents. Each child's PR is retargeted to the new base when it is not already there. The merged row is dropped from `state.json` immediately, then written, so a crash mid-forest does not leave a missing parent.
 
 `A` squash-merges into `main`:
 
@@ -71,7 +75,7 @@ main: M-S
 
 `S` contains the tree change of `A1` and `A2`. The original `A1`/`A2` SHAs are not ancestors of `main`.
 
-Azure DevOps marks PR `A` completed. Restack walks completed parents until it finds a living base (`main`). Then:
+After absorption, `B` and any siblings record `parent = main`. `C` still records `parent = B`. Restack then rebases unique commits only:
 
 ```text
 git rebase --onto origin/main A2 B
@@ -84,9 +88,9 @@ B: M-S-B1'-B2'
 C: M-S-B1'-B2'-C1'   (after C is restacked onto B)
 ```
 
-`A1`/`A2` are not replayed. They are not in `A2..B`. Only `B1` and `B2` are.
+`A1`/`A2` are not replayed. They are not in `A2..B`. Only `B1` and `B2` are. A no-fast-forward merge uses the same planner. The two-parent merge commit is usually an ancestor of `main`; the squash commit is not.
 
-`B`'s PR is retargeted to `main`. `C` still targets `B`. `A` is dropped from tracked stack state once no remaining child records it as parent. If `A` had several children, restack keeps `A` until every surviving child has been reparented, so a conflict or abort cannot leave a missing parent. Local Git branches are not deleted.
+The local Git branch is deleted only when it exists, is not checked out, is not held by another worktree, and `git merge-base --is-ancestor branchTip newBase` is true. Otherwise it is kept and the reason is printed. Squash merges are not contained, so the local branch stays. A restack plan already in progress skips absorption so parentage is not rewritten under that plan.
 
 ## What metadata distinguishes A from B
 

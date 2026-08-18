@@ -6,6 +6,7 @@ import type { StackState } from "../state/schema.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import { logNext } from "../ui/next.ts";
 import { type AppContext, fromRefsHeads, requireState, resolveAdoAccess } from "./context.ts";
+import { reconcileCompletedMerges } from "./reconcile.ts";
 
 export type PrState = "open" | "approved" | "rejected" | "completed" | "abandoned";
 
@@ -44,8 +45,7 @@ export async function statusCommand(ctx: AppContext): Promise<void> {
 }
 
 export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
-  const state = await requireState(ctx);
-  const order = stackOrder(state);
+  let state = await requireState(ctx);
   const current = (await ctx.git.currentBranch()) ?? "HEAD";
   const access = await resolveAdoAccess(ctx, state);
   const prs = new Map<number, AdoPullRequest>();
@@ -57,6 +57,8 @@ export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
       `Could not fetch ${state.remoteName}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+  state = await reconcileCompletedMerges(ctx, state);
+  const order = stackOrder(state);
   if (access.status === "ready") {
     for (const branch of order) {
       const id = state.branches[branch]?.pullRequestId;
