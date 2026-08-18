@@ -105,16 +105,23 @@ export function reconstructForest(options: {
 
   const branches: Record<string, StackBranchState> = {};
   for (const pr of chosen) {
+    const recorded = options.base.branches[pr.sourceBranch];
     const restackBase =
-      pr.properties?.lastRestackBase ?? pr.lastMergeSourceCommit ?? pr.targetBranch;
-    const tip = pr.lastMergeSourceCommit ?? restackBase;
+      pr.properties?.lastRestackBase ??
+      (recorded?.parent === pr.targetBranch ? recorded.lastRestackBase : undefined) ??
+      pr.targetBranch;
+    const tip =
+      pr.lastMergeSourceCommit ??
+      (recorded?.parent === pr.targetBranch ? recorded.lastLocalTip : undefined) ??
+      restackBase;
     branches[pr.sourceBranch] = {
       parent: pr.targetBranch,
-      parentTipAtCreation: restackBase,
+      parentTipAtCreation:
+        recorded?.parent === pr.targetBranch ? recorded.parentTipAtCreation : restackBase,
       lastRestackBase: restackBase,
       lastLocalTip: tip,
-      lastKnownRemoteTip: pr.lastMergeSourceCommit,
-      lastSubmittedTip: pr.lastMergeSourceCommit,
+      lastKnownRemoteTip: pr.lastMergeSourceCommit ?? recorded?.lastKnownRemoteTip,
+      lastSubmittedTip: pr.lastMergeSourceCommit ?? recorded?.lastSubmittedTip,
       pullRequestId: pr.id,
     };
   }

@@ -277,13 +277,28 @@ function completedAncestorsDropped(state: StackState, step: RestackStep): string
   if (!step.retargetPrTo) {
     return [];
   }
-  const dropped: string[] = [];
+  const chain: string[] = [];
   let current = state.branches[step.branch]?.parent;
   while (current && current !== step.onto && current !== state.defaultBranch) {
-    dropped.push(current);
+    chain.push(current);
     current = state.branches[current]?.parent;
   }
-  return dropped;
+
+  const parentByBranch = new Map<string, string>();
+  for (const [name, branch] of Object.entries(state.branches)) {
+    parentByBranch.set(name, name === step.branch ? step.onto : branch.parent);
+  }
+
+  const dropped = new Set<string>();
+  for (const ancestor of chain) {
+    const stillHasChild = [...parentByBranch.entries()].some(
+      ([name, parent]) => parent === ancestor && !dropped.has(name),
+    );
+    if (!stillHasChild) {
+      dropped.add(ancestor);
+    }
+  }
+  return [...dropped];
 }
 
 export class RestackConflictError extends CliError {

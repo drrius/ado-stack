@@ -140,6 +140,83 @@ describe("reconstructForest", () => {
     }
     expect(result.conflicts[0]).toMatchObject({ kind: "multiple-stack-ids" });
   });
+
+  test("does not treat the source tip as lastRestackBase when properties are absent", () => {
+    const result = reconstructForest({
+      base: base(),
+      pullRequests: [
+        {
+          ...pr(1, "feat", "main"),
+          lastMergeSourceCommit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches.feat?.lastRestackBase).toBe("main");
+    expect(result.state.branches.feat?.lastLocalTip).toBe(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+  });
+
+  test("keeps a recorded lastRestackBase when the PR target agrees", () => {
+    const state = base();
+    state.branches.feat = {
+      parent: "main",
+      parentTipAtCreation: "parent-at-create",
+      lastRestackBase: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      lastLocalTip: "cccccccccccccccccccccccccccccccccccccccc",
+    };
+    const result = reconstructForest({
+      base: state,
+      pullRequests: [
+        {
+          ...pr(1, "feat", "main"),
+          lastMergeSourceCommit: "dddddddddddddddddddddddddddddddddddddddd",
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches.feat?.lastRestackBase).toBe(
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    );
+    expect(result.state.branches.feat?.parentTipAtCreation).toBe("parent-at-create");
+  });
+
+  test("prefers property lastRestackBase over the recorded base", () => {
+    const state = base();
+    state.branches.feat = {
+      parent: "main",
+      parentTipAtCreation: "1",
+      lastRestackBase: "recorded-base",
+      lastLocalTip: "2",
+    };
+    const result = reconstructForest({
+      base: state,
+      pullRequests: [
+        {
+          ...pr(1, "feat", "main"),
+          properties: {
+            version: "1",
+            stackId: "s1",
+            parent: "main",
+            branch: "feat",
+            lastRestackBase: "property-base",
+          },
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches.feat?.lastRestackBase).toBe("property-base");
+  });
 });
 
 function pr(id: number, source: string, target: string) {

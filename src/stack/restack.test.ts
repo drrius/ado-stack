@@ -76,4 +76,49 @@ describe("applyRestackStepToState", () => {
     expect(next.branches.B?.parent).toBe("main");
     expect(stackOrder(next)).toEqual(["B", "C"]);
   });
+
+  test("keeps a completed parent while other children still point at it", () => {
+    const forked = state();
+    forked.branches.D = {
+      parent: "A",
+      parentTipAtCreation: "a2",
+      lastRestackBase: "a2",
+      lastLocalTip: "d1",
+      pullRequestId: 4,
+    };
+    const afterFirstChild = applyRestackStepToState(
+      forked,
+      {
+        branch: "B",
+        onto: "main",
+        ontoSha: "s",
+        oldBase: "a2",
+        preRebaseTip: "b2",
+        retargetPrTo: "main",
+        status: "done",
+      },
+      "b2-prime",
+    );
+    expect(afterFirstChild.branches.A).toBeDefined();
+    expect(afterFirstChild.branches.B?.parent).toBe("main");
+    expect(afterFirstChild.branches.D?.parent).toBe("A");
+    expect(stackOrder(afterFirstChild)).toEqual(["A", "D", "B", "C"]);
+
+    const afterLastChild = applyRestackStepToState(
+      afterFirstChild,
+      {
+        branch: "D",
+        onto: "main",
+        ontoSha: "s",
+        oldBase: "a2",
+        preRebaseTip: "d1",
+        retargetPrTo: "main",
+        status: "done",
+      },
+      "d1-prime",
+    );
+    expect(afterLastChild.branches.A).toBeUndefined();
+    expect(afterLastChild.branches.D?.parent).toBe("main");
+    expect(stackOrder(afterLastChild)).toEqual(["B", "C", "D"]);
+  });
 });

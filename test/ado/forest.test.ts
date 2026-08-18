@@ -38,6 +38,10 @@ describe("forest of stacks", () => {
       expect(childrenOf(state, "three-parent").sort()).toEqual(["three-a", "three-b", "three-c"]);
       expect(state.branches["two-deep-child"]?.parent).toBe("two-deep");
       expect(childrenOf(state, "main")).toEqual(["leaf-a", "three-parent", "leaf-b", "two-deep"]);
+      expect(state.branches["three-b"]?.lastRestackBase).toMatch(/^[0-9a-f]{40}$/);
+      expect(state.branches["three-b"]?.lastRestackBase).not.toBe(
+        state.branches["three-b"]?.lastLocalTip,
+      );
 
       const status = await runCli(["status"], { cwd: repo.dir, env });
       expect(status.stdout).toContain("├──");

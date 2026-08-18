@@ -3,6 +3,7 @@ import { AdoError } from "../ado/errors.ts";
 import { decodeStackProperties } from "../ado/properties.ts";
 import { parseAzureDevOpsRemote } from "../ado/remote.ts";
 import { CliError, isCliError } from "../errors/cli-error.ts";
+import { hydrateForestTips } from "../stack/hydrate.ts";
 import {
   type ReconstructPullRequest,
   formatReconstructConflicts,
@@ -82,7 +83,7 @@ export async function initCommand(
     const rebuilt = await reconstructFromAdo(ctx, ado, state);
     adoMetadataLoaded = true;
     if (rebuilt.ok) {
-      state = rebuilt.state;
+      state = await hydrateForestTips(ctx.git, rebuilt.state);
       ctx.log.success("Rebuilt stack state from Azure DevOps pull request metadata.");
     } else if (!rebuilt.conflicts.some((conflict) => conflict.kind === "empty")) {
       ctx.log.warn(formatReconstructConflicts(rebuilt.conflicts));

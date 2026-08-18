@@ -66,7 +66,7 @@ A managed markdown block between `<!-- ado-stack:start -->` and `<!-- ado-stack:
 
 Azure DevOps descriptions are limited to 4000 characters. List endpoints also truncate descriptions, so submit GETs the full PR before editing.
 
-Parentage is the PR target branch. Namespaced properties carry `stack-id` and `last-restack-base` so another clone can rebuild commit ranges. Descriptions are for humans. If the properties API is unavailable, `init` and `repair` still adopt from targets when those agree with local recorded parents.
+Parentage is the PR target branch. Namespaced properties carry `stack-id` and `last-restack-base` so another clone can rebuild commit ranges. Descriptions are for humans. If the properties API is unavailable, `init` and `repair` still adopt from PR targets when those agree with local recorded parents. `lastRestackBase` comes from properties, then a matching local record, then `git merge-base` with the parent — never the source-branch tip.
 
 ## Reconciliation
 
