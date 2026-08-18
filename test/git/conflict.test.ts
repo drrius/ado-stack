@@ -4,7 +4,7 @@ import type { StackState } from "../../src/state/schema.ts";
 import { createTempRepo, runCli, writeCommit } from "../helpers/repo.ts";
 
 describe("restack conflicts", () => {
-  test("stops and leaves git rebase state", { timeout: 30_000 }, async () => {
+  test("stops and leaves git rebase state", async () => {
     const repo = await createTempRepo();
     try {
       await runCli(
@@ -56,5 +56,5 @@ describe("restack conflicts", () => {
       }
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 });

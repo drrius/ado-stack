@@ -4,7 +4,7 @@ import type { StackState } from "../../src/state/schema.ts";
 import { createTempRepo, runCli, writeCommit } from "../helpers/repo.ts";
 
 describe("remote divergence", () => {
-  test("refuses to overwrite an unexpected remote commit", { timeout: 30_000 }, async () => {
+  test("refuses to overwrite an unexpected remote commit", async () => {
     const bare = await createTempRepo({ bare: true });
     const cloneA = await createTempRepo();
     try {
@@ -74,5 +74,5 @@ describe("remote divergence", () => {
       await cloneA.cleanup();
       await bare.cleanup();
     }
-  });
+  }, 30_000);
 });
