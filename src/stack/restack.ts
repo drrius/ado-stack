@@ -1,7 +1,12 @@
 import { CliError } from "../errors/cli-error.ts";
 import type { GitRepo } from "../git/git.ts";
 import { sameWorktreePath } from "../git/worktree.ts";
-import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
+import type {
+  RestackPlanState,
+  RestackStep,
+  StackBranchState,
+  StackState,
+} from "../state/schema.ts";
 import { descendantsOf, stackOrder } from "./graph.ts";
 
 export type PullRequestSnapshot = {
@@ -172,14 +177,15 @@ export async function assertSafeRewrite(options: {
     return;
   }
   const actualRemoteTip = await options.git.getBranchTip(`${options.remoteName}/${options.branch}`);
+  if (!branchWasSubmitted(record)) {
+    throw unpublishedRemoteError(options.branch, actualRemoteTip);
+  }
   const expected = record.lastKnownRemoteTip;
   if (!expected) {
     const localTip = await options.git.getBranchTip(options.branch);
     if (actualRemoteTip !== localTip) {
-      throw divergenceError(
-        options.branch,
-        "(unknown, never synced by ado-stack)",
-        actualRemoteTip,
+      throw new CliError(
+        `Cannot rewrite \`${options.branch}\`.\n\nThis submitted branch has no recorded remote tip.\nRemote tip:\n  ${shortSha(actualRemoteTip)}\nLocal tip:\n  ${shortSha(localTip)}\n\nFetch and inspect the remote before restacking.\n\nNo remote history was overwritten.`,
       );
     }
     return;
@@ -189,14 +195,24 @@ export async function assertSafeRewrite(options: {
   }
 }
 
+export function branchWasSubmitted(record: StackBranchState): boolean {
+  return record.lastSubmittedTip !== undefined || record.pullRequestId !== undefined;
+}
+
+function unpublishedRemoteError(branch: string, actual: string): CliError {
+  return new CliError(
+    `Cannot rewrite \`${branch}\`.\n\nThis branch has a remote head that ado-stack did not publish.\nRemote tip:\n  ${shortSha(actual)}\n\nPublication is submit's job. No remote history was overwritten.`,
+  );
+}
+
 function divergenceError(branch: string, expected: string, actual: string): CliError {
   return new CliError(
     `Cannot rewrite \`${branch}\`.\n\nExpected remote tip:\n  ${shortSha(expected)}\n\nActual remote tip:\n  ${shortSha(actual)}\n\nThe remote branch changed since your last sync. Fetch and inspect the new commits before restacking.\n\nNo remote history was overwritten.`,
   );
 }
 
-export function shortSha(sha: string): string {
-  return sha.length > 7 ? sha.slice(0, 7) : sha;
+export function shortSha(value: string): string {
+  return /^[0-9a-f]{7,}$/i.test(value) ? value.slice(0, 7) : value;
 }
 
 export async function executeRestackStep(options: {

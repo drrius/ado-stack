@@ -30,7 +30,7 @@ History rewrites that must update a published branch call `forcePushWithLease`. 
 
 `src/ado/client.ts` talks to REST API 7.1.
 
-It covers repository lookup, PR list/get/create/update, PR properties, pagination (`x-ms-continuationtoken`), and retries on 429/5xx.
+It covers repository lookup, PR list/get/create/update, PR properties, pagination (`$skip`/`$top`, plus `x-ms-continuationtoken` when the server sends one), and retries on 429/5xx.
 
 Errors are decoded in `src/ado/errors.ts` so a missing target branch or a 401 is an actionable CLI message, not `Error 400`.
 

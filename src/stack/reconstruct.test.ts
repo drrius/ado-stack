@@ -78,6 +78,13 @@ describe("reconstructForest", () => {
       recordedParent: "main",
       prTarget: "other",
     });
+    expect(result.skipped).toEqual([
+      {
+        pullRequestId: 8,
+        sourceBranch: "feat",
+        reason: "not included in the reconstructed forest",
+      },
+    ]);
   });
 
   test("refuses a property parent that disagrees with the PR target", () => {
@@ -139,6 +146,43 @@ describe("reconstructForest", () => {
       return;
     }
     expect(result.conflicts[0]).toMatchObject({ kind: "multiple-stack-ids" });
+    expect(result.skipped.map((skip) => skip.pullRequestId).sort()).toEqual([1, 2]);
+  });
+
+  test("ignores stack IDs on completed PRs outside the live forest", () => {
+    const result = reconstructForest({
+      base: base(),
+      pullRequests: [
+        {
+          ...pr(10, "old-stack", "main"),
+          status: "completed",
+          properties: {
+            version: "1",
+            stackId: "old",
+            parent: "main",
+            branch: "old-stack",
+            lastRestackBase: "x",
+          },
+        },
+        {
+          ...pr(1994, "leaf-b", "main"),
+          properties: {
+            version: "1",
+            stackId: "new",
+            parent: "main",
+            branch: "leaf-b",
+            lastRestackBase: "y",
+          },
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.stackId).toBe("new");
+    expect(result.state.branches["leaf-b"]?.pullRequestId).toBe(1994);
+    expect(result.state.branches["old-stack"]).toBeUndefined();
   });
 
   test("refuses two pull requests for the same source branch", () => {
@@ -252,6 +296,25 @@ describe("reconstructForest", () => {
       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     );
     expect(result.state.branches.feat?.parentTipAtCreation).toBe("parent-at-create");
+  });
+
+  test("names an active pull request whose source is trunk", () => {
+    const result = reconstructForest({
+      base: base(),
+      pullRequests: [pr(1994, "leaf-b", "main"), pr(1735, "main", "other")],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches["leaf-b"]?.pullRequestId).toBe(1994);
+    expect(result.skipped).toEqual([
+      {
+        pullRequestId: 1735,
+        sourceBranch: "main",
+        reason: "source branch is the default branch",
+      },
+    ]);
   });
 
   test("prefers property lastRestackBase over the recorded base", () => {

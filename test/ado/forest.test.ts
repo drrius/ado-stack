@@ -105,6 +105,63 @@ describe("forest of stacks", () => {
       await repo.cleanup();
     }
   }, 60_000);
+
+  test("init reads every active pull request past the first page and names skips", async () => {
+    const repo = await createTempRepo();
+    const fake = new FakeAzureDevOps({
+      organization: "example",
+      project: "Platform",
+      repository: "app",
+      token: "test-pat",
+    });
+    try {
+      const origin = await fake.listen();
+      for (let id = 1; id <= 86; id++) {
+        seedPr(fake, id, `done-${id}`, "main");
+        const completed = fake.pullRequests.get(id);
+        if (completed) {
+          completed.status = "completed";
+        }
+      }
+      for (const [id, source] of [
+        [2043, "chore/radix-vega"],
+        [1994, "feat/adopted-twin"],
+        ...Array.from({ length: 12 }, (_, index) => [3000 + index, `feat/page-one-${index}`]),
+        [1735, "chore/source-control-telemetry-config"],
+        [1866, "feat/robin-desk-booking"],
+      ] as Array<[number, string]>) {
+        seedPr(fake, id, source, "main");
+      }
+      seedPr(fake, 4099, "main", "elsewhere");
+
+      const initialized = await runCli(
+        [
+          "init",
+          "--organization",
+          origin,
+          "--project",
+          "Platform",
+          "--repository",
+          "app",
+          "--default-branch",
+          "main",
+          "--debug",
+        ],
+        { cwd: repo.dir, env },
+      );
+      expect(initialized.exitCode).toBe(0);
+      const state = await readState(repo.dir);
+      expect(state.branches["chore/source-control-telemetry-config"]?.pullRequestId).toBe(1735);
+      expect(state.branches["feat/robin-desk-booking"]?.pullRequestId).toBe(1866);
+      expect(Object.keys(state.branches)).toHaveLength(16);
+      expect(initialized.stderr).toContain("#4099");
+      expect(initialized.stderr).toContain("main");
+      expect(initialized.stderr).toMatch(/source branch is the default branch/i);
+    } finally {
+      fake.stop();
+      await repo.cleanup();
+    }
+  }, 30_000);
 });
 
 async function init(dir: string, origin: string): Promise<void> {

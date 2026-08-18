@@ -169,6 +169,9 @@ export async function reconstructFromAdo(
     });
   }
   const result = reconstructForest({ base, pullRequests });
+  for (const skip of result.skipped) {
+    ctx.log.warn(`Skipped PR #${skip.pullRequestId} \`${skip.sourceBranch}\`: ${skip.reason}.`);
+  }
   if (result.ok) {
     ctx.log.verbose(
       `Adopted ${Object.keys(result.state.branches).length} branches from pull request targets.`,

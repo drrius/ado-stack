@@ -11,22 +11,24 @@ import type {
 
 export const API_VERSION = "7.1";
 
+export type AdoHttpFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 export type AdoClientOptions = {
   organizationUrl: string;
   project: string;
   repositoryId: string;
   authorization: string;
-  fetch?: typeof fetch;
+  fetch?: AdoHttpFetch;
   apiVersion?: string;
   logger?: { debug: (message: string) => void };
 };
 
 export class AdoClient {
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: AdoHttpFetch;
   private readonly apiVersion: string;
 
   constructor(private readonly options: AdoClientOptions) {
-    this.fetchImpl = options.fetch ?? fetch;
+    this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.apiVersion = options.apiVersion ?? API_VERSION;
   }
 
@@ -43,11 +45,15 @@ export class AdoClient {
     } = {},
   ): Promise<AdoPullRequest[]> {
     const results: AdoPullRequest[] = [];
+    const seen = new Set<number>();
+    const pageSize = 100;
+    let skip = 0;
     let continuation: string | undefined;
-    do {
+    for (;;) {
       const query: Record<string, string> = {
         "searchCriteria.status": options.status ?? "all",
-        $top: "100",
+        $top: String(pageSize),
+        $skip: String(skip),
       };
       if (options.sourceRefName) {
         query["searchCriteria.sourceRefName"] = options.sourceRefName;
@@ -67,9 +73,22 @@ export class AdoClient {
         this.repoPath("/pullrequests"),
         { query },
       );
-      results.push(...unwrapCollection<AdoPullRequest>(body, "list pull requests"));
+      const page = unwrapCollection<AdoPullRequest>(body, "list pull requests");
+      let added = 0;
+      for (const pullRequest of page) {
+        if (seen.has(pullRequest.pullRequestId)) {
+          continue;
+        }
+        seen.add(pullRequest.pullRequestId);
+        results.push(pullRequest);
+        added += 1;
+      }
       continuation = headers.get("x-ms-continuationtoken") ?? undefined;
-    } while (continuation);
+      skip += page.length;
+      if (page.length === 0 || added === 0 || (page.length < pageSize && !continuation)) {
+        break;
+      }
+    }
     return results;
   }
 

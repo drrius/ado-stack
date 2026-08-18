@@ -13,6 +13,7 @@ import {
   RestackConflictError,
   applyRestackStepToState,
   assertSafeRewrite,
+  branchWasSubmitted,
   conflictScope,
   executeRestackStep,
   markStep,
@@ -237,7 +238,7 @@ async function runPlan(
 
 async function pushRewritten(ctx: AppContext, state: StackState, step: RestackStep): Promise<void> {
   const record = state.branches[step.branch];
-  if (!record) {
+  if (!record || !branchWasSubmitted(record)) {
     return;
   }
   await assertSafeRewrite({

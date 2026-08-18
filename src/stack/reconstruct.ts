@@ -26,28 +26,38 @@ export type ReconstructConflict =
   | { kind: "missing-parent"; branch: string; parent: string }
   | { kind: "cycle"; branches: string[] };
 
+export type AdoptionSkip = {
+  pullRequestId: number;
+  sourceBranch: string;
+  reason: string;
+};
+
 export type ReconstructResult =
-  | { ok: true; state: StackState }
-  | { ok: false; conflicts: ReconstructConflict[] };
+  | { ok: true; state: StackState; skipped: AdoptionSkip[] }
+  | { ok: false; conflicts: ReconstructConflict[]; skipped: AdoptionSkip[] };
 
 export function reconstructForest(options: {
   base: StackState;
   pullRequests: ReconstructPullRequest[];
 }): ReconstructResult {
+  const skipped: AdoptionSkip[] = [];
+  const adoptable = adoptablePullRequests(
+    options.base.defaultBranch,
+    options.pullRequests,
+    skipped,
+  );
   const propertyIds = [
     ...new Set(
-      options.pullRequests
-        .map((pr) => pr.properties?.stackId)
-        .filter((id): id is string => Boolean(id)),
+      adoptable.map((pr) => pr.properties?.stackId).filter((id): id is string => Boolean(id)),
     ),
   ].sort();
   if (propertyIds.length > 1) {
-    return { ok: false, conflicts: [{ kind: "multiple-stack-ids", stackIds: propertyIds }] };
+    return fail(options.pullRequests, skipped, [
+      { kind: "multiple-stack-ids", stackIds: propertyIds },
+    ]);
   }
-
-  const adoptable = adoptablePullRequests(options.base.defaultBranch, options.pullRequests);
   if (adoptable.length === 0) {
-    return { ok: false, conflicts: [{ kind: "empty" }] };
+    return fail(options.pullRequests, skipped, [{ kind: "empty" }]);
   }
 
   const bySource = new Map<string, ReconstructPullRequest[]>();
@@ -96,7 +106,7 @@ export function reconstructForest(options: {
   }
 
   if (conflicts.length > 0) {
-    return { ok: false, conflicts };
+    return fail(options.pullRequests, skipped, conflicts);
   }
 
   const branches: Record<string, StackBranchState> = {};
@@ -139,9 +149,10 @@ export function reconstructForest(options: {
     conflicts.push({ kind: "cycle", branches: cycle });
   }
   if (conflicts.length > 0) {
-    return { ok: false, conflicts };
+    return fail(options.pullRequests, skipped, conflicts);
   }
-  return { ok: true, state: next };
+  accountUnadoptedActivePullRequests(options.pullRequests, adoptedPullRequestIds(next), skipped);
+  return { ok: true, state: next, skipped };
 }
 
 export function formatReconstructConflicts(conflicts: ReconstructConflict[]): string {
@@ -180,6 +191,7 @@ function formatConflict(conflict: ReconstructConflict): string {
 function adoptablePullRequests(
   defaultBranch: string,
   pullRequests: ReconstructPullRequest[],
+  skipped: AdoptionSkip[],
 ): ReconstructPullRequest[] {
   const bySource = new Map<string, ReconstructPullRequest[]>();
   for (const pr of pullRequests) {
@@ -213,9 +225,18 @@ function adoptablePullRequests(
   };
 
   for (const pr of pullRequests) {
-    if (pr.status === "active") {
-      walk(pr.sourceBranch, new Set());
+    if (pr.status !== "active") {
+      continue;
     }
+    if (pr.sourceBranch === defaultBranch) {
+      skipped.push({
+        pullRequestId: pr.id,
+        sourceBranch: pr.sourceBranch,
+        reason: "source branch is the default branch",
+      });
+      continue;
+    }
+    walk(pr.sourceBranch, new Set());
   }
 
   const chosen: ReconstructPullRequest[] = [];
@@ -241,4 +262,40 @@ function choosePullRequestForSource(
     return { ok: true, pr: only };
   }
   return { ok: false, pullRequestIds: prs.map((pr) => pr.id) };
+}
+
+function fail(
+  pullRequests: ReconstructPullRequest[],
+  skipped: AdoptionSkip[],
+  conflicts: ReconstructConflict[],
+): ReconstructResult {
+  accountUnadoptedActivePullRequests(pullRequests, new Set(), skipped);
+  return { ok: false, conflicts, skipped };
+}
+
+function adoptedPullRequestIds(state: StackState): Set<number> {
+  return new Set(
+    Object.values(state.branches).flatMap((branch) =>
+      branch.pullRequestId === undefined ? [] : [branch.pullRequestId],
+    ),
+  );
+}
+
+function accountUnadoptedActivePullRequests(
+  pullRequests: ReconstructPullRequest[],
+  adoptedIds: Set<number>,
+  skipped: AdoptionSkip[],
+): void {
+  const named = new Set(skipped.map((skip) => skip.pullRequestId));
+  for (const pr of pullRequests) {
+    if (pr.status !== "active" || adoptedIds.has(pr.id) || named.has(pr.id)) {
+      continue;
+    }
+    skipped.push({
+      pullRequestId: pr.id,
+      sourceBranch: pr.sourceBranch,
+      reason: "not included in the reconstructed forest",
+    });
+    named.add(pr.id);
+  }
 }
