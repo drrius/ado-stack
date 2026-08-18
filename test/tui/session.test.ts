@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { runTui } from "../../src/tui/session.ts";
+import type { UpdateNotice } from "../../src/update.ts";
 import { FakeAzureDevOps } from "../ado/fake-server.ts";
 import { type TempRepo, createTempRepo, runCli, writeCommit } from "../helpers/repo.ts";
 
@@ -16,14 +17,17 @@ type Driver = {
   done: Promise<number>;
 };
 
-function startSession(cwd: string): Driver {
+function startSession(
+  cwd: string,
+  options: { checkUpdate?: (configDir: string) => Promise<UpdateNotice> } = {},
+): Driver {
   const input = new PassThrough();
   const output = new PassThrough();
   let buffer = "";
   output.on("data", (chunk) => {
     buffer += chunk.toString();
   });
-  const done = runTui({ cwd, io: { input, output } });
+  const done = runTui({ cwd, io: { input, output }, ...options });
   return {
     buffer: () => buffer,
     waitFor: async (needle) => {
@@ -74,6 +78,7 @@ describe("TUI session smoke", () => {
     process.env.ADO_STACK_CONFIG_DIR = join(repo.dir, ".ado-stack-home");
     process.env.ADO_STACK_AUTH_MODE = "pat";
     process.env.ADO_STACK_PAT = "test-pat";
+    process.env.ADO_STACK_NO_UPDATE_CHECK = "1";
   });
 
   afterAll(async () => {
@@ -108,6 +113,16 @@ describe("TUI session smoke", () => {
     expect(await repo.git.currentBranch()).toBe("main");
     expect(session.buffer()).not.toContain("test-pat");
   }, 30_000);
+
+  test("startup notice offers update when a newer release exists", async () => {
+    const session = startSession(repo.dir, {
+      checkUpdate: async () => ({ kind: "available", current: "0.2.1", latest: "9.9.9" }),
+    });
+    await session.waitFor("9.9.9 is available");
+    await session.waitFor("Update ado-stack");
+    session.press(KEY.ctrlC);
+    expect(await session.done).toBe(0);
+  }, 15_000);
 
   test("bare non-TTY invocation falls back to the argv CLI", async () => {
     const result = await runCli([], { cwd: repo.dir });

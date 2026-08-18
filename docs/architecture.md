@@ -14,7 +14,7 @@ CLI commands
 
 `src/cli/parse.ts` turns argv into a command and flags. `src/cli/run.ts` loads context and dispatches. Commands live in `src/commands/`. They do not shell out to Git themselves.
 
-`--help` and `--version` do not require a Git repository. Other commands do, except `auth` and `config`.
+`--help` and `--version` do not require a Git repository. Other commands do, except `auth`, `config`, and `update`.
 
 ## Interactive UI
 
@@ -81,3 +81,7 @@ Local state is never trusted blindly. `status` compares Git tips, recorded SHAs,
 ## Configuration
 
 `src/config/` merges global config, repo config (`.git/ado-stack/config.json`), and environment variables. Secrets are not config keys.
+
+## Updates
+
+`src/update.ts` compares `package.json`'s version to GitHub Releases. The TUI checks on startup (24h cache in the user config directory) and offers Update when a newer tag exists. `ado-stack update` always revalidates, verifies SHA256, and replaces the running binary. From-source sessions print the install script instead of overwriting Bun. Set `ADO_STACK_NO_UPDATE_CHECK=1` to skip the startup check.

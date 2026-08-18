@@ -10,6 +10,7 @@ describe("CLI flags", () => {
     expect(help.stdout).toContain("Daily:");
     expect(help.stdout).toContain("Recovery:");
     expect(help.stdout).toContain("auth login → init → create → submit");
+    expect(help.stdout).toContain("update");
     const version = await runCli(["--version"], { cwd: process.cwd() });
     expect(version.exitCode).toBe(0);
     expect(version.stdout.trim()).toBe(VERSION);
@@ -19,6 +20,11 @@ describe("CLI flags", () => {
     const help = await runCli(["help", "create"], { cwd: process.cwd() });
     expect(help.exitCode).toBe(0);
     expect(help.stdout).toContain("ado-stack create <name>");
+
+    const update = await runCli(["update", "--help"], { cwd: process.cwd() });
+    expect(update.exitCode).toBe(0);
+    expect(update.stdout).toContain("ado-stack update");
+    expect(update.stdout).toContain("GitHub Releases");
   });
 
   test("rejects unknown flags and PATs on argv", async () => {

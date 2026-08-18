@@ -23,12 +23,20 @@ import { RestackConflictError } from "../stack/restack.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import { createLogger } from "../ui/log.ts";
 import { redactText } from "../ui/redact.ts";
+import {
+  type UpdateNotice,
+  applyUpdate,
+  checkForUpdate,
+  formatUpdateNote,
+  installHint,
+  installKind,
+} from "../update.ts";
 import { VERSION } from "../version.ts";
 import { renderStackLines } from "./render.ts";
 
 export type TuiIo = { input?: Readable; output?: Writable };
 
-type Session = { ctx: AppContext; io: TuiIo };
+type Session = { ctx: AppContext; io: TuiIo; update: UpdateNotice };
 
 type HomeAction =
   | "navigate"
@@ -38,6 +46,7 @@ type HomeAction =
   | "auth"
   | "init"
   | "refresh"
+  | "update"
   | "quit";
 
 const ACTION_LABELS: Record<HomeAction, { label: string; hint?: string }> = {
@@ -48,10 +57,15 @@ const ACTION_LABELS: Record<HomeAction, { label: string; hint?: string }> = {
   auth: { label: "Authentication", hint: "PAT status, login, logout" },
   init: { label: "Initialize", hint: "detect org, project, and repository" },
   refresh: { label: "Refresh", hint: "reload stack status" },
+  update: { label: "Update ado-stack", hint: "install the latest release" },
   quit: { label: "Quit" },
 };
 
-export async function runTui(options: { cwd: string; io?: TuiIo }): Promise<number> {
+export async function runTui(options: {
+  cwd: string;
+  io?: TuiIo;
+  checkUpdate?: (configDir: string) => Promise<UpdateNotice>;
+}): Promise<number> {
   const io: TuiIo = options.io ?? {};
   const print = (line: string) => log.message(line, { ...io });
   const logger = createLogger({ verbose: false, debug: false, stdout: print, stderr: print });
@@ -62,18 +76,30 @@ export async function runTui(options: { cwd: string; io?: TuiIo }): Promise<numb
     debug: false,
     requireGit: false,
   });
-  const session: Session = { ctx, io };
+  const update = await (options.checkUpdate ?? defaultCheckUpdate)(ctx.configDir);
+  const session: Session = { ctx, io, update };
   const isRepo = await ctx.git.isRepository();
   intro(pc.inverse(` ado-stack ${VERSION} `), { ...io });
+  const updateNote = formatUpdateNote(update);
+  if (updateNote) {
+    note(updateNote, "Update", { ...io });
+  }
   while (true) {
     const action = await homeMenu(session, isRepo);
     if (action === "quit") {
       break;
     }
-    await dispatchAction(session, action);
+    const result = await dispatchAction(session, action);
+    if (result === "exit") {
+      break;
+    }
   }
   outro("Done. `ado-stack --help` shows the scriptable CLI.", { ...io });
   return 0;
+}
+
+async function defaultCheckUpdate(configDir: string): Promise<UpdateNotice> {
+  return checkForUpdate({ current: VERSION, configDir });
 }
 
 async function homeMenu(session: Session, isRepo: boolean): Promise<HomeAction> {
@@ -83,7 +109,7 @@ async function homeMenu(session: Session, isRepo: boolean): Promise<HomeAction> 
       "ado-stack",
       { ...session.io },
     );
-    return pickAction(session, ["auth", "quit"], "auth");
+    return pickAction(session, withUpdate(["auth", "quit"], session.update), "auth");
   }
   const state = await session.ctx.stateStore.read();
   if (!state) {
@@ -93,28 +119,26 @@ async function homeMenu(session: Session, isRepo: boolean): Promise<HomeAction> 
         ? `Detected Azure DevOps remote \`${remote.remoteName}\`: ${redactText(remote.url)}`
         : "No Azure DevOps remote detected. Initialize will ask for the details.";
     note(`No stack state in this repository yet.\n${detected}`, "Welcome", { ...session.io });
-    return pickAction(session, ["init", "auth", "quit"], "init");
+    return pickAction(session, withUpdate(["init", "auth", "quit"], session.update), "init");
   }
   let status: StackStatus;
   try {
     status = await loadStackStatus(session.ctx);
   } catch (error) {
     log.error(formatError(error), { ...session.io });
-    return pickAction(session, ["auth", "init", "refresh", "quit"], "refresh");
+    return pickAction(
+      session,
+      withUpdate(["auth", "init", "refresh", "quit"], session.update),
+      "refresh",
+    );
   }
   note(renderStackLines(status, session.ctx.config.branchPrefix).join("\n"), "Stack", {
     ...session.io,
   });
-  const actions: HomeAction[] = [
-    "navigate",
-    "create",
-    "submit",
-    "restack",
-    "auth",
-    "init",
-    "refresh",
-    "quit",
-  ];
+  const actions = withUpdate(
+    ["navigate", "create", "submit", "restack", "auth", "init", "refresh", "quit"],
+    session.update,
+  );
   const recommended = recommendedAction(status.next);
   return pickAction(session, actions, recommended ?? "navigate", recommended);
 }
@@ -130,7 +154,7 @@ async function pickAction(
     options: actions.map((action) => ({
       value: action,
       label: ACTION_LABELS[action].label,
-      hint: action === recommended ? "recommended" : ACTION_LABELS[action].hint,
+      hint: actionHint(action, session.update, recommended),
     })),
     initialValue: initial,
     ...session.io,
@@ -139,6 +163,20 @@ async function pickAction(
     return "quit";
   }
   return choice;
+}
+
+function actionHint(
+  action: HomeAction,
+  notice: UpdateNotice,
+  recommended?: HomeAction,
+): string | undefined {
+  if (action === recommended) {
+    return "recommended";
+  }
+  if (action === "update" && notice.kind === "available") {
+    return `install ${notice.latest}`;
+  }
+  return ACTION_LABELS[action].hint;
 }
 
 function recommendedAction(next: NextStep): HomeAction | undefined {
@@ -163,20 +201,33 @@ function recommendedAction(next: NextStep): HomeAction | undefined {
 async function dispatchAction(
   session: Session,
   action: Exclude<HomeAction, "quit">,
-): Promise<void> {
+): Promise<"exit" | undefined> {
   switch (action) {
     case "navigate":
-      return runFlow(session, flowNavigate);
+      await runFlow(session, flowNavigate);
+      return;
     case "create":
-      return runFlow(session, flowCreate);
+      await runFlow(session, flowCreate);
+      return;
     case "submit":
-      return runFlow(session, flowSubmit);
+      await runFlow(session, flowSubmit);
+      return;
     case "restack":
-      return runFlow(session, flowRestack);
+      await runFlow(session, flowRestack);
+      return;
     case "auth":
-      return runFlow(session, flowAuth);
+      await runFlow(session, flowAuth);
+      return;
     case "init":
-      return runFlow(session, flowInit);
+      await runFlow(session, flowInit);
+      return;
+    case "update":
+      try {
+        return await flowUpdate(session);
+      } catch (error) {
+        log.error(formatError(error), { ...session.io });
+        return undefined;
+      }
     case "refresh":
       return;
     default: {
@@ -192,6 +243,37 @@ async function runFlow(session: Session, flow: (session: Session) => Promise<voi
   } catch (error) {
     log.error(formatError(error), { ...session.io });
   }
+}
+
+async function flowUpdate(session: Session): Promise<"exit" | undefined> {
+  const { io, update } = session;
+  if (update.kind !== "available") {
+    log.info("Already on the latest release.", { ...io });
+    return;
+  }
+  if (installKind() === "source") {
+    note(installHint(), `${update.latest} is available`, { ...io });
+    return;
+  }
+  const ok = await confirm({
+    message: `Install ${update.latest} over ${update.current}?`,
+    ...io,
+  });
+  if (isCancel(ok) || !ok) {
+    return;
+  }
+  const result = await applyUpdate({ destPath: process.execPath, version: update.latest });
+  log.success(`Updated ${result.destPath} to ${result.latest}. Restart ado-stack to use it.`, {
+    ...io,
+  });
+  return "exit";
+}
+
+function withUpdate(actions: HomeAction[], notice: UpdateNotice): HomeAction[] {
+  if (notice.kind !== "available") {
+    return actions;
+  }
+  return [...actions.filter((action) => action !== "quit"), "update", "quit"];
 }
 
 async function flowAuth(session: Session): Promise<void> {

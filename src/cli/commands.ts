@@ -10,6 +10,7 @@ export type CommandName =
   | "auth"
   | "config"
   | "repair"
+  | "update"
   | "help"
   | "version";
 
@@ -38,6 +39,15 @@ export const COMMAND_SPECS: CommandSpec[] = [
     detail:
       "Login reads a PAT from ADO_STACK_PAT or AZURE_DEVOPS_EXT_PAT, then prompts on a TTY or reads stdin. The PAT is stored in the user config directory with mode 0600, never in the repository.",
     positionals: [{ name: "action", required: false }],
+    flags: [{ name: "help", kind: "boolean" }],
+  },
+  {
+    name: "update",
+    group: "setup",
+    summary: "Install the latest ado-stack release",
+    usage: ["ado-stack update"],
+    detail:
+      "Check GitHub Releases and replace the installed binary when a newer version exists. A TTY session also shows this notice on startup. From-source runs print the install command instead of overwriting the working tree.",
     flags: [{ name: "help", kind: "boolean" }],
   },
   {
