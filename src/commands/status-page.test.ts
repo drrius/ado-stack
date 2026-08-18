@@ -62,6 +62,31 @@ describe("status page", () => {
     expect(html).toContain("file.txt");
     expect(html).toContain("pullrequest/11");
     expect(html).toContain("restacks clean");
+    expect(html).toContain("function blockHeight");
+    expect(html).toContain("files * FILE_ROW");
+  });
+
+  test("grows a node to fit every conflict path", () => {
+    const crowded: StatusJson = {
+      ...model,
+      forest: [
+        {
+          ...model.forest[0]!,
+          children: [
+            {
+              ...model.forest[0]!.children[0]!,
+              preflight: {
+                kind: "conflicts",
+                files: ["a", "b", "c", "d", "e", "f", "g"],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const html = renderStatusHtml(crowded);
+    expect(html).toContain("function blockHeight");
+    expect(html).toContain('"g"');
   });
 
   test("writeStatusPage can be opened later without ado-stack", async () => {

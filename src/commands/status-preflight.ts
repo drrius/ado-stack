@@ -11,7 +11,7 @@ export async function attachPreflight(
 ): Promise<StatusJson> {
   return {
     ...model,
-    forest: await Promise.all(model.forest.map((node) => withPreflight(git, state, node))),
+    forest: await Promise.all(model.forest.map((node) => withPreflight(git, state, node, false))),
   };
 }
 
@@ -19,11 +19,19 @@ async function withPreflight(
   git: GitRepo,
   state: StackState,
   node: StatusJsonNode,
+  parentMoving: boolean,
+  rewrittenParent?: string,
 ): Promise<StatusJsonNode> {
+  const willMove = node.needsRestack || parentMoving;
+  const replay = willMove
+    ? await replayRestack(git, state, node, rewrittenParent)
+    : { preflight: { kind: "not-needed" } as const, onto: undefined };
   return {
     ...node,
-    preflight: await preflightFor(git, state, node),
-    children: await Promise.all(node.children.map((child) => withPreflight(git, state, child))),
+    preflight: replay.preflight,
+    children: await Promise.all(
+      node.children.map((child) => withPreflight(git, state, child, willMove, replay.onto)),
+    ),
   };
 }
 
@@ -35,31 +43,80 @@ export async function preflightFor(
   if (!node.needsRestack) {
     return { kind: "not-needed" };
   }
+  return (await replayRestack(git, state, node)).preflight;
+}
+
+async function replayRestack(
+  git: GitRepo,
+  state: StackState,
+  node: Pick<StatusJsonNode, "branch" | "parent">,
+  rewrittenParent?: string,
+): Promise<{ preflight: StatusPreflight; onto?: string }> {
   try {
-    const parentSha = await resolveOntoSha(git, state, node.parent);
+    const parentSha = rewrittenParent ?? (await resolveOntoSha(git, state, node.parent));
     const branchSha = await git.getBranchTip(node.branch);
-    const mergeBase = await git.mergeBase(parentSha, branchSha);
-    if (!mergeBase) {
-      return { kind: "error", message: `No merge-base between ${node.parent} and ${node.branch}.` };
+    const oldBase = await restackOldBase(git, state, node.branch, parentSha, branchSha);
+    if (!oldBase) {
+      return {
+        preflight: {
+          kind: "error",
+          message: `No merge-base between ${node.parent} and ${node.branch}.`,
+        },
+      };
     }
-    const result = await git.mergeTree({
-      mergeBase,
-      ours: parentSha,
-      theirs: branchSha,
-    });
-    const files = parseContentConflictPaths(`${result.stdout}\n${result.stderr}`);
-    if (result.exitCode === 0 && files.length === 0) {
-      return { kind: "clean" };
+    if (oldBase === parentSha) {
+      return { preflight: { kind: "clean" }, onto: branchSha };
     }
-    if (files.length > 0) {
-      return { kind: "conflicts", files };
+    const commits = await git.getCommitsBetween(oldBase, branchSha);
+    if (commits.length === 0) {
+      return {
+        preflight: { kind: "error", message: `No unique commits to restack for ${node.branch}.` },
+      };
     }
-    const detail = result.stderr.trim() || result.stdout.trim();
-    return {
-      kind: "error",
-      message: detail || `merge-tree exited ${result.exitCode}.`,
-    };
+    let ours = parentSha;
+    let lastBase = oldBase;
+    const files = new Set<string>();
+    for (const commit of commits) {
+      const result = await git.mergeTree({ mergeBase: lastBase, ours, theirs: commit.sha });
+      for (const path of parseContentConflictPaths(`${result.stdout}\n${result.stderr}`)) {
+        files.add(path);
+      }
+      if (files.size > 0) {
+        return { preflight: { kind: "conflicts", files: [...files] } };
+      }
+      const tree = writtenTree(result.stdout);
+      if (!tree) {
+        const detail = result.stderr.trim() || result.stdout.trim();
+        return {
+          preflight: { kind: "error", message: detail || `merge-tree exited ${result.exitCode}.` },
+        };
+      }
+      ours = await git.commitTree(tree, [ours], "ado-stack preflight");
+      lastBase = commit.sha;
+    }
+    return { preflight: { kind: "clean" }, onto: ours };
   } catch (error) {
-    return { kind: "error", message: error instanceof Error ? error.message : String(error) };
+    return {
+      preflight: { kind: "error", message: error instanceof Error ? error.message : String(error) },
+    };
   }
+}
+
+async function restackOldBase(
+  git: GitRepo,
+  state: StackState,
+  branch: string,
+  parentSha: string,
+  branchSha: string,
+): Promise<string | undefined> {
+  const recorded = state.branches[branch]?.lastRestackBase;
+  if (recorded && (await git.isAncestor(recorded, branch))) {
+    return recorded;
+  }
+  return git.mergeBase(parentSha, branchSha);
+}
+
+function writtenTree(stdout: string): string | undefined {
+  const first = stdout.trim().split("\n")[0];
+  return first !== undefined && /^[0-9a-f]{40,}$/i.test(first) ? first : undefined;
 }
