@@ -20,6 +20,7 @@ import { formatError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
 import { applyBranchPrefix, validateBranchName } from "../stack/names.ts";
 import { RestackConflictError } from "../stack/restack.ts";
+import { restackRebaseGit } from "../stack/worktrees.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import { createLogger } from "../ui/log.ts";
 import { redactText } from "../ui/redact.ts";
@@ -500,12 +501,16 @@ async function flowSubmit(session: Session): Promise<void> {
 
 async function flowRestack(session: Session): Promise<void> {
   const { ctx, io } = session;
-  if (await ctx.git.rebaseInProgress()) {
+  const savedPlan = await ctx.stateStore.readRestackPlan();
+  const restackRebase = await restackRebaseGit(
+    ctx.git,
+    savedPlan?.steps.filter((step) => step.status !== "done").map((step) => step.branch) ?? [],
+  );
+  if (restackRebase !== undefined || (await ctx.git.rebaseInProgress())) {
     log.warn("A Git rebase is in progress. Finish or abort it below.", { ...io });
     await conflictLoop(session);
     return;
   }
-  const savedPlan = await ctx.stateStore.readRestackPlan();
   if (savedPlan) {
     note(
       "A previous restack left a saved plan. Continue it instead of starting a new one.",
