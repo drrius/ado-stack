@@ -9,6 +9,8 @@ import { restackCommand } from "../commands/restack.ts";
 import { statusCommand } from "../commands/status.ts";
 import { submitCommand } from "../commands/submit.ts";
 import { CliError, formatError, isCliError } from "../errors/cli-error.ts";
+import { shouldLaunchTui } from "../tui/mode.ts";
+import { runTui } from "../tui/session.ts";
 import { type Logger, createLogger } from "../ui/log.ts";
 import type { CommandSpec } from "./commands.ts";
 import { UsageError, parseArgv, printCommandHelp, printHelp, printVersion } from "./parse.ts";
@@ -18,6 +20,16 @@ export async function run(argv: string[]): Promise<number> {
   try {
     const parsed = parseArgv(argv);
     if (parsed.kind === "global-help") {
+      if (
+        shouldLaunchTui({
+          parsed,
+          env: process.env,
+          stdinIsTty: Boolean(process.stdin.isTTY),
+          stdoutIsTty: Boolean(process.stdout.isTTY),
+        })
+      ) {
+        return await runTui({ cwd: parsed.flags.cwd });
+      }
       printHelp();
       return 0;
     }

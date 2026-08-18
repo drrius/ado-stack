@@ -26,6 +26,13 @@ import {
   resolveAdoAccess,
 } from "./context.ts";
 
+export async function previewRestack(ctx: AppContext): Promise<RestackPlanState> {
+  const state = await requireState(ctx);
+  await ctx.git.fetch(state.remoteName);
+  const pullRequests = await loadSnapshots(ctx, state);
+  return planRestack({ git: ctx.git, state, pullRequests });
+}
+
 export async function restackCommand(
   ctx: AppContext,
   flags: Record<string, string | boolean>,

@@ -61,6 +61,12 @@ ado-stack submit
 
 `submit` pushes each branch and opens or updates PRs so `schema` targets `main` and `api` targets `schema`.
 
+## Interactive UI
+
+Run `ado-stack` with no arguments at a terminal to open the interactive UI. The home screen shows the stack from trunk to tip with PR state, links, and the recommended next step. From there you can create a branch, submit with a preview, restack with a plan and guided conflict recovery, navigate the stack, initialize a repository, and log in with a hidden PAT prompt.
+
+Scripts and CI keep the argv CLI. A bare `ado-stack` prints help when stdin or stdout is not a TTY. Pass `--no-tui` or set `ADO_STACK_NO_TUI=1` to opt out explicitly. Both surfaces run the same command implementations.
+
 ## Workflow
 
 ```text

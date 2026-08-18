@@ -5,15 +5,45 @@ import { type PullRequestSnapshot, effectiveParent, resolveOntoSha } from "../st
 import type { StackState } from "../state/schema.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import { logNext } from "../ui/next.ts";
-import {
-  type AdoAccess,
-  type AppContext,
-  fromRefsHeads,
-  requireState,
-  resolveAdoAccess,
-} from "./context.ts";
+import { type AppContext, fromRefsHeads, requireState, resolveAdoAccess } from "./context.ts";
+
+export type PrState = "open" | "approved" | "rejected" | "completed" | "abandoned";
+
+export type PrDisplay =
+  | { kind: "none" }
+  | { kind: "unknown"; id: number }
+  | { kind: "loaded"; id: number; title: string; url: string; state: PrState };
+
+export type StatusRow = {
+  branch: string;
+  parent: string;
+  pr: PrDisplay;
+  isCurrent: boolean;
+  needsRestack: boolean;
+  diverged: boolean;
+};
+
+export type AdoStatusAccess =
+  | { kind: "ready"; loadError?: string }
+  | { kind: "unavailable"; reason: "unauthenticated" | "error"; message: string };
+
+export type NextStep = "auth-login" | "create" | "submit" | "restack" | "none";
+
+export type StackStatus = {
+  rows: StatusRow[];
+  currentBranch: string;
+  defaultBranch: string;
+  ado: AdoStatusAccess;
+  issues: string[];
+  next: NextStep;
+};
 
 export async function statusCommand(ctx: AppContext): Promise<void> {
+  const status = await loadStackStatus(ctx);
+  renderStatus(ctx, status);
+}
+
+export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
   const state = await requireState(ctx);
   const order = stackOrder(state);
   const current = (await ctx.git.currentBranch()) ?? "HEAD";
@@ -53,47 +83,141 @@ export async function statusCommand(ctx: AppContext): Promise<void> {
   }
 
   const snapshots = toSnapshots(prs);
-  if (access.status === "unavailable") {
+  const rows = order.map((branch) =>
+    buildRow({
+      state,
+      branch,
+      current,
+      adoReady: access.status === "ready",
+      prs,
+      snapshots,
+      parentTips,
+    }),
+  );
+  const ado: AdoStatusAccess =
+    access.status === "ready"
+      ? loadError !== undefined
+        ? { kind: "ready", loadError }
+        : { kind: "ready" }
+      : { kind: "unavailable", reason: access.reason, message: access.message };
+  return {
+    rows,
+    currentBranch: current,
+    defaultBranch: state.defaultBranch,
+    ado,
+    issues: collectIssues(state, order, ado, prs, ctx.config.branchPrefix),
+    next: nextStep(ado, rows),
+  };
+}
+
+function nextStep(ado: AdoStatusAccess, rows: StatusRow[]): NextStep {
+  if (ado.kind === "unavailable" && ado.reason === "unauthenticated") {
+    return "auth-login";
+  }
+  if (rows.length === 0) {
+    return "create";
+  }
+  if (rows.some((row) => row.needsRestack)) {
+    return "restack";
+  }
+  if (rows.some((row) => row.pr.kind === "none")) {
+    return "submit";
+  }
+  return "none";
+}
+
+function renderStatus(ctx: AppContext, status: StackStatus): void {
+  const prefix = ctx.config.branchPrefix;
+  if (status.ado.kind === "unavailable") {
     ctx.log.info(
-      access.reason === "unauthenticated"
+      status.ado.reason === "unauthenticated"
         ? "Not authenticated to Azure DevOps."
-        : `Azure DevOps status unavailable: ${access.message}`,
+        : `Azure DevOps status unavailable: ${status.ado.message}`,
     );
-  } else if (loadError) {
-    ctx.log.warn(`Azure DevOps status is incomplete: ${loadError}`);
+  } else if (status.ado.loadError !== undefined) {
+    ctx.log.warn(`Azure DevOps status is incomplete: ${status.ado.loadError}`);
   }
   ctx.log.info("Stack");
   ctx.log.info("");
-  if (order.length === 0) {
+  if (status.rows.length === 0) {
     ctx.log.info("  (empty)");
   }
-  const rows = order.map((branch) =>
-    formatRow({ ctx, state, branch, current, access, prs, snapshots, parentTips }),
-  );
-  for (const row of rows) {
-    ctx.log.info(row.line);
-    if (row.url) {
-      ctx.log.info(`    ${row.url}`);
+  for (const row of status.rows) {
+    ctx.log.info(formatRowLine(row, prefix));
+    if (row.pr.kind === "loaded") {
+      ctx.log.info(`    ${row.pr.url}`);
     }
   }
   ctx.log.info("");
-  ctx.log.info(`Current: ${formatBranch(current, ctx.config.branchPrefix)}`);
-  const issues = collectIssues(state, order, access, prs, ctx.config.branchPrefix);
-  if (issues.length > 0) {
+  ctx.log.info(`Current: ${formatBranch(status.currentBranch, prefix)}`);
+  if (status.issues.length > 0) {
     ctx.log.info("");
     ctx.log.info("Notes");
-    for (const issue of issues) {
+    for (const issue of status.issues) {
       ctx.log.info(`  ${issue}`);
     }
   }
   ctx.log.info("");
-  if (access.status === "unavailable" && access.reason === "unauthenticated") {
-    logNext(ctx.log, "ado-stack auth login");
-  } else if (order.length === 0) {
-    logNext(ctx.log, "ado-stack create <name>");
-  } else if (rows.some((row) => row.needsRestack)) {
-    logNext(ctx.log, "ado-stack restack");
+  switch (status.next) {
+    case "auth-login":
+      logNext(ctx.log, "ado-stack auth login");
+      return;
+    case "create":
+      logNext(ctx.log, "ado-stack create <name>");
+      return;
+    case "submit":
+      logNext(ctx.log, "ado-stack submit");
+      return;
+    case "restack":
+      logNext(ctx.log, "ado-stack restack");
+      return;
+    case "none":
+      return;
+    default: {
+      const _exhaustive: never = status.next;
+      throw new Error(`Unhandled next step ${String(_exhaustive)}`);
+    }
   }
+}
+
+export function prStatusLabel(pr: PrDisplay): string {
+  switch (pr.kind) {
+    case "none":
+      return "LOCAL";
+    case "unknown":
+      return "UNKNOWN";
+    case "loaded":
+      return pr.state.toUpperCase();
+    default: {
+      const _exhaustive: never = pr;
+      throw new Error(`Unhandled PR display ${String(_exhaustive)}`);
+    }
+  }
+}
+
+export function rowFlags(row: StatusRow): string[] {
+  const flags: string[] = [];
+  if (row.isCurrent) {
+    flags.push("current");
+  }
+  if (row.needsRestack) {
+    flags.push("↑ restack needed");
+  } else if (row.pr.kind === "loaded") {
+    flags.push("✓ synced");
+  }
+  if (row.diverged) {
+    flags.push("local/remote diverge");
+  }
+  return flags;
+}
+
+function formatRowLine(row: StatusRow, prefix: string): string {
+  const prLabel = row.pr.kind === "none" ? "no-pr" : `#${row.pr.id}`;
+  const name = formatBranch(row.branch, prefix).padEnd(12);
+  const parent = formatBranch(row.parent, prefix).padEnd(10);
+  const status = prStatusLabel(row.pr).padEnd(10);
+  const title = row.pr.kind === "loaded" && row.pr.title ? `  ${row.pr.title}` : "";
+  return `  ${prLabel.padEnd(6)} ${name} → ${parent} ${status} ${rowFlags(row).join("  ")}${title}`.trimEnd();
 }
 
 function toSnapshots(prs: Map<number, AdoPullRequest>): Map<number, PullRequestSnapshot> {
@@ -109,88 +233,79 @@ function toSnapshots(prs: Map<number, AdoPullRequest>): Map<number, PullRequestS
   return snapshots;
 }
 
-function formatRow(options: {
-  ctx: AppContext;
+function buildRow(options: {
   state: StackState;
   branch: string;
   current: string;
-  access: AdoAccess;
+  adoReady: boolean;
   prs: Map<number, AdoPullRequest>;
   snapshots: Map<number, PullRequestSnapshot>;
   parentTips: Record<string, string>;
-}): { line: string; url?: string; needsRestack: boolean } {
+}): StatusRow {
   const record = options.state.branches[options.branch];
   if (!record) {
-    return {
-      line: `  ${formatBranch(options.branch, options.ctx.config.branchPrefix)}`,
-      needsRestack: false,
-    };
+    throw new Error(`Stack order returned untracked branch ${options.branch}`);
   }
   const pr = record.pullRequestId !== undefined ? options.prs.get(record.pullRequestId) : undefined;
-  const prLabel = record.pullRequestId !== undefined ? `#${record.pullRequestId}` : "no-pr";
-  const name = formatBranch(options.branch, options.ctx.config.branchPrefix).padEnd(12);
-  const parent = formatBranch(record.parent, options.ctx.config.branchPrefix).padEnd(10);
-  const status = (
-    pr ? prStatusLabel(pr) : record.pullRequestId !== undefined ? "UNKNOWN" : "LOCAL"
-  ).padEnd(10);
-  const flags: string[] = [];
-  if (options.branch === options.current) {
-    flags.push("current");
-  }
+  const display: PrDisplay = pr
+    ? {
+        kind: "loaded",
+        id: pr.pullRequestId,
+        title: pr.title,
+        url: pullRequestWebUrl(options.state, pr.pullRequestId),
+        state: prState(pr),
+      }
+    : record.pullRequestId === undefined
+      ? { kind: "none" }
+      : { kind: "unknown", id: record.pullRequestId };
   const resolved = effectiveParent({
     state: options.state,
     branch: options.branch,
     pullRequests: options.snapshots,
   });
   const parentTip = options.parentTips[resolved.parent] ?? record.lastRestackBase;
-  const needs =
+  const needsRestack =
     restackNeeded({
       lastRestackBase: record.lastRestackBase,
       parentTip,
       parentCompleted: resolved.parentCompleted,
     }) ||
     (pr !== undefined && fromRefsHeads(pr.targetRefName) !== record.parent);
-  if (needs) {
-    flags.push("↑ restack needed");
-  } else if (pr) {
-    flags.push("✓ synced");
-  }
   const localTip = options.parentTips[options.branch] ?? record.lastLocalTip;
-  if (record.lastKnownRemoteTip && localTip && record.lastKnownRemoteTip !== localTip) {
-    flags.push("local/remote diverge");
-  }
-  const title = pr?.title ? `  ${pr.title}` : "";
-  const row: { line: string; url?: string; needsRestack: boolean } = {
-    line: `  ${prLabel.padEnd(6)} ${name} → ${parent} ${status} ${flags.join("  ")}${title}`.trimEnd(),
-    needsRestack: needs,
+  const diverged = Boolean(
+    record.lastKnownRemoteTip && localTip && record.lastKnownRemoteTip !== localTip,
+  );
+  return {
+    branch: options.branch,
+    parent: record.parent,
+    pr: display,
+    isCurrent: options.branch === options.current,
+    needsRestack,
+    diverged,
   };
-  if (pr) {
-    row.url = pullRequestWebUrl(options.state, pr.pullRequestId);
-  }
-  return row;
 }
 
-function prStatusLabel(pr: AdoPullRequest): string {
+function prState(pr: AdoPullRequest): PrState {
   if (pr.status === "completed") {
-    return "COMPLETED";
+    return "completed";
   }
   if (pr.status === "abandoned") {
-    return "ABANDONED";
+    return "abandoned";
   }
   const votes = (pr.reviewers ?? []).map((reviewer) => reviewer.vote ?? 0);
   if (votes.some((vote) => vote <= -10)) {
-    return "REJECTED";
+    return "rejected";
   }
   if (votes.some((vote) => vote >= 10)) {
-    return "APPROVED";
+    return "approved";
   }
-  return "OPEN";
+  return "open";
 }
 
 function collectIssues(
   state: StackState,
   order: string[],
-  access: AdoAccess,
+  ado: AdoStatusAccess,
   prs: Map<number, AdoPullRequest>,
   prefix: string,
 ): string[] {
@@ -201,7 +316,7 @@ function collectIssues(
       continue;
     }
     const pr = record.pullRequestId !== undefined ? prs.get(record.pullRequestId) : undefined;
-    if (access.status === "ready" && record.pullRequestId !== undefined && !pr) {
+    if (ado.kind === "ready" && record.pullRequestId !== undefined && !pr) {
       issues.push(
         `PR #${record.pullRequestId} for ${formatBranch(branch, prefix)} could not be loaded.`,
       );
