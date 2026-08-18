@@ -105,4 +105,55 @@ describe("status sync flags", () => {
       await bare.cleanup();
     }
   }, 30_000);
+
+  test("status --json prints only the forest model on stdout", async () => {
+    const repo = await createTempRepo();
+    try {
+      await runCli(
+        [
+          "init",
+          "--organization",
+          "https://dev.azure.com/example",
+          "--project",
+          "P",
+          "--repository",
+          "R",
+        ],
+        { cwd: repo.dir },
+      );
+      await runCli(["create", "A"], { cwd: repo.dir });
+      await writeCommit(repo.git, "a.txt", "one\n", "A1");
+      const text = await runCli(["status", "--json", "--width", "40"], { cwd: repo.dir });
+      expect(text.exitCode).toBe(0);
+      expect(text.stdout).not.toContain("\u001b");
+      expect(text.stdout).not.toContain("Stack");
+      expect(text.stdout).not.toContain("Next:");
+      expect(text.stdout.trim().startsWith("{")).toBe(true);
+      const parsed = JSON.parse(text.stdout) as {
+        defaultBranch: string;
+        forest: Array<{
+          branch: string;
+          parent: string;
+          pullRequestNumber: number | null;
+          children: unknown[];
+        }>;
+      };
+      expect(parsed.defaultBranch).toBe("main");
+      expect(parsed.forest).toHaveLength(1);
+      expect(parsed.forest[0]?.branch).toBe("A");
+      expect(parsed.forest[0]?.parent).toBe("main");
+      expect(parsed.forest[0]?.pullRequestNumber).toBeNull();
+      expect(parsed.forest[0]?.children).toEqual([]);
+
+      const textView = await runCli(["status", "--width", "40"], { cwd: repo.dir });
+      expect(textView.exitCode).toBe(0);
+      const rows = textView.stdout.split("\n").filter((line) => /├──|└──/.test(line));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toContain("└──");
+      expect(rows[0]).toContain("A");
+      expect(textView.stdout).not.toContain("pullrequest");
+    } finally {
+      await repo.cleanup();
+    }
+  }, 30_000);
 });

@@ -89,7 +89,7 @@ async function dispatch(
       await submitCommand(ctx, flags);
       return;
     case "status":
-      await statusCommand(ctx);
+      await statusCommand(ctx, flags);
       return;
     case "restack":
       await restackCommand(ctx, flags);
