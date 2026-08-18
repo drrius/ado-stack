@@ -44,8 +44,8 @@ export async function statusCommand(
     ? { ...ctx, log: createLogger({ verbose: false, debug: ctx.debug, stdout: () => {} }) }
     : ctx;
   const status = await loadStackStatus(loadCtx);
+  const state = await requireState(ctx);
   if (flags.json === true) {
-    const state = await requireState(ctx);
     process.stdout.write(`${JSON.stringify(toStatusJson(status, state))}\n`);
     return;
   }
@@ -54,7 +54,7 @@ export async function statusCommand(
     stdoutColumns: process.stdout.columns,
     columnsEnv: process.env.COLUMNS,
   });
-  renderStatus(ctx, status, { width, urls: flags.urls === true });
+  renderStatus(ctx, status, { width, urls: flags.urls === true, state });
 }
 
 export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
@@ -149,7 +149,7 @@ function nextStep(ado: AdoStatusAccess, rows: StatusRow[]): NextStep {
 function renderStatus(
   ctx: AppContext,
   status: StackStatus,
-  options: { width: number; urls: boolean },
+  options: { width: number; urls: boolean; state: StackState },
 ): void {
   const prefix = ctx.config.branchPrefix;
   if (status.ado.kind === "unavailable") {
@@ -171,6 +171,7 @@ function renderStatus(
     width: options.width,
     urls: options.urls,
     branchPrefix: prefix,
+    state: options.state,
   })) {
     ctx.log.info(line);
   }

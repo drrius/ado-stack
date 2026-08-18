@@ -1,5 +1,6 @@
 import { CliError } from "../errors/cli-error.ts";
 import type { StackState } from "../state/schema.ts";
+import { displayWidth, ellipsizeToWidth } from "../ui/display-width.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import {
   type ForestLine,
@@ -18,6 +19,7 @@ export type StatusTextOptions = {
   width: number;
   urls: boolean;
   branchPrefix: string;
+  state: StackState;
 };
 
 export type StatusJsonPullRequestStatus = "none" | "unknown" | PrState;
@@ -86,7 +88,7 @@ function formatForestRow(line: ForestLine, options: StatusTextOptions): string {
   const branch = formatBranch(line.row.branch, options.branchPrefix);
   const state = [prStatusLabel(line.row.pr), ...rowFlags(line.row)].join("  ");
   const title = line.row.pr.kind === "loaded" && line.row.pr.title ? line.row.pr.title : "";
-  const url = options.urls ? pullRequestUrl(line.row.pr) : "";
+  const url = options.urls ? pullRequestUrl(line.row.pr, options.state) : "";
   return fitStatusRow({
     glyphs,
     pr,
@@ -173,18 +175,8 @@ function jsonPullRequestUrl(pr: PrDisplay, state: StackState): string | null {
   }
 }
 
-function pullRequestUrl(pr: PrDisplay): string {
-  switch (pr.kind) {
-    case "loaded":
-      return pr.url;
-    case "unknown":
-    case "none":
-      return "";
-    default: {
-      const _exhaustive: never = pr;
-      return _exhaustive;
-    }
-  }
+function pullRequestUrl(pr: PrDisplay, state: StackState): string {
+  return jsonPullRequestUrl(pr, state) ?? "";
 }
 
 function fitStatusRow(parts: {
@@ -197,33 +189,33 @@ function fitStatusRow(parts: {
   width: number;
 }): string {
   const full = renderStatusRow(parts, parts.branch, parts.title, parts.url);
-  if (full.length <= parts.width) {
+  if (displayWidth(full) <= parts.width) {
     return full;
   }
 
   if (parts.url) {
     const withoutUrl = renderStatusRow(parts, parts.branch, parts.title, "");
-    const urlRoom = parts.width - withoutUrl.length - 2;
+    const urlRoom = parts.width - displayWidth(withoutUrl) - 2;
     if (urlRoom > 0) {
-      return renderStatusRow(parts, parts.branch, parts.title, ellipsize(parts.url, urlRoom));
+      return renderStatusRow(parts, parts.branch, parts.title, ellipsizeToWidth(parts.url, urlRoom));
     }
   }
 
   const withoutFlexible = renderStatusRow(parts, parts.branch, "", "");
-  if (withoutFlexible.length <= parts.width) {
-    const titleRoom = parts.width - withoutFlexible.length - 2;
+  if (displayWidth(withoutFlexible) <= parts.width) {
+    const titleRoom = parts.width - displayWidth(withoutFlexible) - 2;
     if (titleRoom > 0 && parts.title) {
-      return renderStatusRow(parts, parts.branch, ellipsize(parts.title, titleRoom), "");
+      return renderStatusRow(parts, parts.branch, ellipsizeToWidth(parts.title, titleRoom), "");
     }
     return withoutFlexible;
   }
 
   const base = `${parts.glyphs}${parts.pr}  ${parts.state}`;
-  const branchRoom = parts.width - base.length - 1;
+  const branchRoom = parts.width - displayWidth(base) - 1;
   if (branchRoom <= 0) {
     return `${parts.glyphs}${parts.pr}  ${parts.state}`;
   }
-  return renderStatusRow(parts, ellipsize(parts.branch, branchRoom), "", "");
+  return renderStatusRow(parts, ellipsizeToWidth(parts.branch, branchRoom), "", "");
 }
 
 function renderStatusRow(
@@ -244,17 +236,4 @@ function renderStatusRow(
     line += `  ${url}`;
   }
   return line;
-}
-
-function ellipsize(text: string, width: number): string {
-  if (width <= 0) {
-    return "";
-  }
-  if (text.length <= width) {
-    return text;
-  }
-  if (width === 1) {
-    return "…";
-  }
-  return `${text.slice(0, width - 1)}…`;
 }
