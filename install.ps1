@@ -1,6 +1,5 @@
 # Install ado-stack from GitHub Releases on Windows.
-# Public repos: irm https://raw.githubusercontent.com/drrius/ado-stack/main/install.ps1 | iex
-# Private repos: authenticate with GitHub CLI first, then run this script locally.
+# irm https://raw.githubusercontent.com/drrius/ado-stack/main/install.ps1 | iex
 $ErrorActionPreference = "Stop"
 
 $Repo = if ($env:ADO_STACK_GITHUB_REPO) { $env:ADO_STACK_GITHUB_REPO } else { "drrius/ado-stack" }
@@ -11,6 +10,59 @@ $Asset = "ado-stack-windows-x64.exe"
 $Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ado-stack-" + [guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $Tmp | Out-Null
 
+function Write-ReleaseMissing {
+  Write-Error "No GitHub Release found for $Repo ($Version). Publish a v* tag (git tag vX.Y.Z && git push origin vX.Y.Z). If the repository is private, run gh auth login and retry."
+}
+
+function Remove-PartialDownload {
+  param([string]$Path)
+  if (Test-Path $Path) {
+    Remove-Item -Force $Path
+  }
+}
+
+function Download-WithGh {
+  param([string]$Pattern)
+  if ($Version -eq "latest") {
+    & gh release download --repo $Repo --pattern $Pattern --dir $Tmp --clobber
+  } else {
+    & gh release download $Version --repo $Repo --pattern $Pattern --dir $Tmp --clobber
+  }
+  return $LASTEXITCODE -eq 0
+}
+
+function Download-File {
+  param(
+    [string]$Url,
+    [string]$Dest,
+    [string]$Pattern
+  )
+
+  $curlExe = Get-Command curl.exe -ErrorAction SilentlyContinue
+  if ($curlExe) {
+    & $curlExe.Source -fsSL $Url -o $Dest
+    if ($LASTEXITCODE -eq 0) {
+      return $true
+    }
+    Remove-PartialDownload $Dest
+  } else {
+    try {
+      Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing
+      return $true
+    } catch {
+      Remove-PartialDownload $Dest
+    }
+  }
+
+  $gh = Get-Command gh -ErrorAction SilentlyContinue
+  if (-not $gh) {
+    return $false
+  }
+
+  Remove-PartialDownload $Dest
+  return Download-WithGh $Pattern
+}
+
 try {
   if ($Version -eq "latest") {
     $Base = "https://github.com/$Repo/releases/latest/download"
@@ -20,23 +72,14 @@ try {
 
   $AssetPath = Join-Path $Tmp $Asset
   $SumPath = Join-Path $Tmp "SHA256SUMS"
-  $gh = Get-Command gh -ErrorAction SilentlyContinue
-  if ($gh) {
-    if ($Version -eq "latest") {
-      & gh release download --repo $Repo --pattern $Asset --dir $Tmp
-      & gh release download --repo $Repo --pattern SHA256SUMS --dir $Tmp
-    } else {
-      & gh release download $Version --repo $Repo --pattern $Asset --dir $Tmp
-      & gh release download $Version --repo $Repo --pattern SHA256SUMS --dir $Tmp
-    }
-  } else {
-    try {
-      Invoke-WebRequest -Uri "$Base/$Asset" -OutFile $AssetPath -UseBasicParsing
-      Invoke-WebRequest -Uri "$Base/SHA256SUMS" -OutFile $SumPath -UseBasicParsing
-    } catch {
-      Write-Error "Download failed. If $Repo is private, install GitHub CLI, run gh auth login, and retry."
-      throw
-    }
+
+  if (-not (Download-File "$Base/$Asset" $AssetPath $Asset)) {
+    Write-ReleaseMissing
+    throw
+  }
+  if (-not (Download-File "$Base/SHA256SUMS" $SumPath "SHA256SUMS")) {
+    Write-ReleaseMissing
+    throw
   }
 
   $Expected = (Get-Content $SumPath | Where-Object { $_ -match "\s$Asset$" } | ForEach-Object { ($_ -split "\s+")[0] } | Select-Object -First 1)

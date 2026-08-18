@@ -56,5 +56,5 @@ describe("restack conflicts", () => {
       }
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 });

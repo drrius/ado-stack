@@ -15,32 +15,6 @@ Smaller reviews land first. You keep building on top without waiting. Each PR sh
 
 ## Installation
 
-The GitHub repository is private today. Unauthenticated `curl | sh` cannot download release assets until it is public. Do not make the repository public from this project unless you intend to.
-
-### While the repository is private
-
-Install GitHub CLI, authenticate, then download a release asset.
-
-```bash
-gh auth login
-gh release download --repo drrius/ado-stack --pattern 'ado-stack-*' --pattern SHA256SUMS
-```
-
-Verify the SHA256 in `SHA256SUMS`, then move the binary for your OS onto your `PATH` as `ado-stack`.
-
-You can also clone and run from source if you have Bun.
-
-```bash
-git clone https://github.com/drrius/ado-stack.git
-cd ado-stack
-bun install --frozen-lockfile
-bun run src/index.ts --help
-```
-
-`install.sh` and `install.ps1` already use GitHub CLI when `gh` is on `PATH`. Run them from a checkout after `gh auth login`.
-
-### Once the repository is public
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/drrius/ado-stack/main/install.sh | sh
 ```
@@ -51,7 +25,20 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/drrius/ado-stack/main/install.ps1 | iex
 ```
 
-The installer picks `ado-stack-darwin-arm64`, `ado-stack-darwin-x64`, `ado-stack-linux-x64`, or `ado-stack-windows-x64.exe`, checks SHA256, and installs into a user-writable directory.
+The installer downloads the latest GitHub Release for your OS (`ado-stack-darwin-arm64`, `ado-stack-darwin-x64`, `ado-stack-linux-x64`, or `ado-stack-windows-x64.exe`), checks SHA256, and installs into a user-writable directory (`~/.local/bin` or `%LOCALAPPDATA%\ado-stack\bin`).
+
+Pin a version with `ADO_STACK_VERSION=v0.1.0`. Override the install directory with `ADO_STACK_INSTALL_DIR`.
+
+### From source
+
+Clone and run with Bun:
+
+```bash
+git clone https://github.com/drrius/ado-stack.git
+cd ado-stack
+bun install --frozen-lockfile
+bun run src/index.ts --help
+```
 
 ## Requirements
 

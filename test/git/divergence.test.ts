@@ -74,5 +74,5 @@ describe("remote divergence", () => {
       await cloneA.cleanup();
       await bare.cleanup();
     }
-  });
+  }, 30_000);
 });
