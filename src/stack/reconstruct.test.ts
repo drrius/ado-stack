@@ -141,6 +141,22 @@ describe("reconstructForest", () => {
     expect(result.conflicts[0]).toMatchObject({ kind: "multiple-stack-ids" });
   });
 
+  test("refuses two pull requests for the same source branch", () => {
+    const result = reconstructForest({
+      base: base(),
+      pullRequests: [pr(1, "feat", "main"), pr(2, "feat", "other")],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.conflicts[0]).toMatchObject({
+      kind: "duplicate-source",
+      branch: "feat",
+      pullRequestIds: [1, 2],
+    });
+  });
+
   test("does not treat the source tip as lastRestackBase when properties are absent", () => {
     const result = reconstructForest({
       base: base(),

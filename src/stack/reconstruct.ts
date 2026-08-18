@@ -219,12 +219,7 @@ function adoptablePullRequests(
 
   const chosen: ReconstructPullRequest[] = [];
   for (const branch of needed) {
-    const prs = bySource.get(branch) ?? [];
-    const active = prs.find((pr) => pr.status === "active");
-    const pick = active ?? prs[0];
-    if (pick) {
-      chosen.push(pick);
-    }
+    chosen.push(...(bySource.get(branch) ?? []));
   }
   return chosen;
 }
