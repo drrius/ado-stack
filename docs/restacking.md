@@ -103,6 +103,11 @@ Before `rebase --onto`:
 - the unique commit list is non-empty
 - the remote tip equals `lastKnownRemoteTip` (no unknown remote commits)
 - a branch with no pull request and no `lastSubmittedTip` is rebased locally and not pushed
+- every branch in the operation set is mapped to the worktree that holds it
+
+If another worktree holds a branch and `git status --porcelain` is empty, restack runs `git -C <path> rebase --onto` there and leaves that worktree on the rebased branch. If any holding worktree is dirty, every held branch is named with its path and the whole restack is refused. Free siblings are not rebased or pushed.
+
+After a successful restack the invoking worktree is left on the branch it started on.
 
 A conflict leaves `git rebase` in progress and writes `.git/ado-stack/restack-in-progress.json`. Resolve, `git rebase --continue`, then `ado-stack restack --continue`. `ado-stack restack --abort` aborts the Git rebase and clears the plan. Submitted branches already force-pushed with lease are not rolled back.
 

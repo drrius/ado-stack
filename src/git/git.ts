@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { CliError } from "../errors/cli-error.ts";
+import { type GitWorktree, parseWorktreePorcelain } from "./worktree.ts";
 
 export class GitError extends CliError {
   readonly args: readonly string[];
@@ -97,6 +99,14 @@ export class GitRepo {
     const result = await this.run(["branch", "--show-current"], { allowFailure: true });
     const name = result.stdout.trim();
     return name.length > 0 ? name : undefined;
+  }
+
+  async toplevel(): Promise<string> {
+    return this.text(["rev-parse", "--show-toplevel"]);
+  }
+
+  async listWorktrees(): Promise<GitWorktree[]> {
+    return parseWorktreePorcelain(await this.text(["worktree", "list", "--porcelain"]));
   }
 
   async workingTreeStatus(): Promise<WorkingTreeStatus> {
@@ -260,7 +270,9 @@ export class GitRepo {
   async rebaseInProgress(): Promise<boolean> {
     const merge = await this.text(["rev-parse", "--git-path", "rebase-merge"]);
     const apply = await this.text(["rev-parse", "--git-path", "rebase-apply"]);
-    return existsSync(joinPath(this.cwd, merge)) || existsSync(joinPath(this.cwd, apply));
+    return (
+      existsSync(resolveGitPath(this.cwd, merge)) || existsSync(resolveGitPath(this.cwd, apply))
+    );
   }
 
   async abortRebase(): Promise<void> {
@@ -272,11 +284,8 @@ export class GitRepo {
   }
 }
 
-function joinPath(cwd: string, gitPath: string): string {
-  if (gitPath.startsWith("/")) {
-    return gitPath;
-  }
-  return `${cwd}/${gitPath}`;
+function resolveGitPath(cwd: string, gitPath: string): string {
+  return isAbsolute(gitPath) ? gitPath : join(cwd, gitPath);
 }
 
 async function spawnGit(args: readonly string[], cwd: string): Promise<GitRunResult> {

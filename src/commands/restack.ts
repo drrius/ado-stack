@@ -5,6 +5,8 @@ import {
   propertyPatches,
 } from "../ado/properties.ts";
 import { CliError } from "../errors/cli-error.ts";
+import { GitRepo } from "../git/git.ts";
+import { sameWorktreePath } from "../git/worktree.ts";
 import { stackOrder } from "../stack/graph.ts";
 import {
   type PullRequestSnapshot,
@@ -18,6 +20,7 @@ import {
   planRestack,
   resolveOntoSha,
 } from "../stack/restack.ts";
+import { resolveRestackWorktrees, restackRebaseGit } from "../stack/worktrees.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
 import { formatBranch } from "../ui/format.ts";
 import {
@@ -61,8 +64,12 @@ export async function restackCommand(
     ctx.log.info("Stack is already up to date.");
     return;
   }
+  await resolveRestackWorktrees(
+    ctx.git,
+    plan.steps.map((step) => step.branch),
+  );
   await ctx.stateStore.writeRestackPlan(plan);
-  await runPlan(ctx, state, plan);
+  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, state, plan));
 }
 
 async function continueRestack(ctx: AppContext): Promise<void> {
@@ -70,9 +77,17 @@ async function continueRestack(ctx: AppContext): Promise<void> {
   if (!plan) {
     throw new CliError("No restack is in progress.");
   }
-  if (await ctx.git.rebaseInProgress()) {
+  const rebaseGit =
+    (await restackRebaseGit(
+      ctx.git,
+      plan.steps.filter((step) => step.status !== "done").map((step) => step.branch),
+    )) ?? ctx.git;
+  if (await rebaseGit.rebaseInProgress()) {
+    const where = sameWorktreePath(rebaseGit.cwd, ctx.git.cwd)
+      ? ""
+      : `\n\nThe rebase is in the worktree at:\n  ${rebaseGit.cwd}`;
     throw new CliError(
-      "Git rebase is still in progress.\n\nResolve conflicts, `git add` the files, run `git rebase --continue`, then `ado-stack restack --continue`.",
+      `Git rebase is still in progress.${where}\n\nResolve conflicts, \`git add\` the files, run \`git rebase --continue\`, then \`ado-stack restack --continue\`.`,
     );
   }
   const state = await requireState(ctx);
@@ -92,19 +107,67 @@ async function continueRestack(ctx: AppContext): Promise<void> {
     await ctx.stateStore.write(nextState);
     const nextPlan = markStep(plan, conflicted.branch, "done");
     await ctx.stateStore.writeRestackPlan(nextPlan);
-    await runPlan(ctx, nextState, nextPlan);
+    await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, nextState, nextPlan));
     return;
   }
-  await runPlan(ctx, state, plan);
+  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, state, plan));
 }
 
 async function abortRestack(ctx: AppContext): Promise<void> {
-  if (await ctx.git.rebaseInProgress()) {
-    await ctx.git.abortRebase();
+  const plan = await ctx.stateStore.readRestackPlan();
+  const branches = plan
+    ? plan.steps.filter((step) => step.status !== "done").map((step) => step.branch)
+    : [];
+  const rebaseGit = (await restackRebaseGit(ctx.git, branches)) ?? ctx.git;
+  if (await rebaseGit.rebaseInProgress()) {
+    await rebaseGit.abortRebase();
     ctx.log.info("Aborted the in-progress Git rebase.");
   }
   await ctx.stateStore.clearRestackPlan();
   ctx.log.info("Cleared the ado-stack restack plan. Branches already pushed were not rolled back.");
+}
+
+type CheckoutSnapshot = {
+  branch: string | undefined;
+  head: string;
+};
+
+async function snapshotCheckout(git: AppContext["git"]): Promise<CheckoutSnapshot> {
+  return {
+    branch: await git.currentBranch(),
+    head: await git.getBranchTip("HEAD"),
+  };
+}
+
+async function restoreCheckout(git: AppContext["git"], start: CheckoutSnapshot): Promise<void> {
+  if (await git.rebaseInProgress()) {
+    return;
+  }
+  const branch = await git.currentBranch();
+  if (start.branch !== undefined) {
+    if (branch !== start.branch) {
+      await git.checkout(start.branch);
+    }
+    return;
+  }
+  const head = await git.getBranchTip("HEAD");
+  if (head !== start.head) {
+    await git.run(["checkout", "--detach", start.head]);
+  }
+}
+
+async function restoreCheckoutAfter(
+  git: AppContext["git"],
+  action: () => Promise<void>,
+): Promise<void> {
+  const start = await snapshotCheckout(git);
+  try {
+    await action();
+  } catch (error) {
+    await restoreCheckout(git, start);
+    throw error;
+  }
+  await restoreCheckout(git, start);
 }
 
 async function runPlan(
@@ -112,6 +175,11 @@ async function runPlan(
   state: StackState,
   initialPlan: RestackPlanState,
 ): Promise<void> {
+  const pending = initialPlan.steps
+    .filter((step) => step.status !== "done")
+    .map((step) => step.branch);
+  const sites = await resolveRestackWorktrees(ctx.git, pending);
+  const currentPath = await ctx.git.toplevel();
   let current = state;
   let plan = initialPlan;
   for (const step of plan.steps) {
@@ -131,13 +199,23 @@ async function runPlan(
       ),
     };
     await ctx.stateStore.writeRestackPlan(plan);
+    const site = sites.get(live.branch) ?? currentPath;
+    const rebaseGit = sameWorktreePath(site, currentPath) ? ctx.git : new GitRepo(site);
     try {
-      current = await executeRestackStep({ git: ctx.git, state: current, step: live });
+      current = await executeRestackStep({
+        git: ctx.git,
+        state: current,
+        step: live,
+        rebaseGit,
+      });
     } catch (error) {
       if (error instanceof RestackConflictError) {
         await ctx.stateStore.writeRestackPlan(markStep(plan, step.branch, "conflict"));
         const scope = conflictScope(current, plan, step.branch);
-        throw new RestackConflictError(error.branch, error, scope);
+        throw new RestackConflictError(error.branch, error, {
+          ...scope,
+          worktreePath: error.worktreePath,
+        });
       }
       throw error;
     }

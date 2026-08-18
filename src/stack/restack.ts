@@ -1,5 +1,6 @@
 import { CliError } from "../errors/cli-error.ts";
 import type { GitRepo } from "../git/git.ts";
+import { sameWorktreePath } from "../git/worktree.ts";
 import type {
   RestackPlanState,
   RestackStep,
@@ -218,6 +219,7 @@ export async function executeRestackStep(options: {
   git: GitRepo;
   state: StackState;
   step: RestackStep;
+  rebaseGit?: GitRepo;
 }): Promise<StackState> {
   const record = options.state.branches[options.step.branch];
   if (!record) {
@@ -245,16 +247,22 @@ export async function executeRestackStep(options: {
     branch: options.step.branch,
     remoteName: options.state.remoteName,
   });
+  const rebaseGit = options.rebaseGit ?? options.git;
   try {
-    await options.git.rebaseOnto({
+    await rebaseGit.rebaseOnto({
       newBase: options.step.ontoSha,
       oldBase: options.step.oldBase,
       branch: options.step.branch,
     });
   } catch (error) {
-    const conflict = await options.git.rebaseInProgress();
+    const conflict = await rebaseGit.rebaseInProgress();
     if (conflict) {
-      throw new RestackConflictError(options.step.branch, error);
+      if (sameWorktreePath(rebaseGit.cwd, options.git.cwd)) {
+        throw new RestackConflictError(options.step.branch, error);
+      }
+      throw new RestackConflictError(options.step.branch, error, {
+        worktreePath: rebaseGit.cwd,
+      });
     }
     throw error;
   }
@@ -321,11 +329,12 @@ export class RestackConflictError extends CliError {
   readonly branch: string;
   readonly blocked: string[];
   readonly untouched: string[];
+  readonly worktreePath: string | undefined;
 
   constructor(
     branch: string,
     cause: unknown,
-    options: { blocked?: string[]; untouched?: string[] } = {},
+    options: { blocked?: string[]; untouched?: string[]; worktreePath?: string } = {},
   ) {
     const blocked = options.blocked ?? [branch];
     const untouched = options.untouched ?? [];
@@ -337,14 +346,19 @@ export class RestackConflictError extends CliError {
       untouched.length > 0
         ? `\n\nUntouched branches (not restacked; still pending):\n${untouched.map((name) => `  ${name}`).join("\n")}`
         : "";
+    const worktreeLine =
+      options.worktreePath === undefined
+        ? ""
+        : `\n\nThe rebase is in the worktree at:\n  ${options.worktreePath}`;
     super(
-      `Restack stopped on \`${branch}\` because Git reported a rebase conflict.\n\nGit's rebase state has been left in place. ado-stack did not reset or discard your work.${blockedLine}${untouchedLine}\n\nA Git rebase is in progress, so remaining siblings cannot be restacked in this process. They stay pending in the plan.\n\nResolve the conflicted files, then:\n  git add <files>\n  git rebase --continue\n  ado-stack restack --continue\n\nTo abandon this restack attempt:\n  ado-stack restack --abort`,
+      `Restack stopped on \`${branch}\` because Git reported a rebase conflict.\n\nGit's rebase state has been left in place. ado-stack did not reset or discard your work.${worktreeLine}${blockedLine}${untouchedLine}\n\nA Git rebase is in progress, so remaining siblings cannot be restacked in this process. They stay pending in the plan.\n\nResolve the conflicted files, then:\n  git add <files>\n  git rebase --continue\n  ado-stack restack --continue\n\nTo abandon this restack attempt:\n  ado-stack restack --abort`,
       { cause, exitCode: 1 },
     );
     this.name = "RestackConflictError";
     this.branch = branch;
     this.blocked = blocked;
     this.untouched = untouched;
+    this.worktreePath = options.worktreePath;
   }
 }
 
