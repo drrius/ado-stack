@@ -102,6 +102,11 @@ Before `rebase --onto`:
 - `oldBase` is an ancestor of the branch
 - the unique commit list is non-empty
 - the remote tip equals `lastKnownRemoteTip` (no unknown remote commits)
+- no branch in the operation set is checked out in another Git worktree
+
+A held branch is named with its worktree path and the whole restack is refused. Free siblings are not rebased or pushed. ado-stack does not move a held branch with `git update-ref` or `git branch -f`.
+
+After a successful restack the invoking worktree is left on the branch it started on.
 
 A conflict leaves `git rebase` in progress and writes `.git/ado-stack/restack-in-progress.json`. Resolve, `git rebase --continue`, then `ado-stack restack --continue`. `ado-stack restack --abort` aborts the Git rebase and clears the plan. Branches already force-pushed with lease are not rolled back.
 

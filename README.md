@@ -102,6 +102,8 @@ Conflicts stop immediately. Git rebase state is left in place. There is no autom
 
 Uncommitted tracked changes block create, checkout, restack, and submit.
 
+A stack branch checked out in another Git worktree blocks restack. The command names every held branch and its worktree, then rebases nothing. It does not move a held branch with plumbing.
+
 ## Authentication
 
 Never put a PAT in the repo, stack metadata, logs, or PR descriptions.

@@ -17,6 +17,7 @@ import {
   planRestack,
   resolveOntoSha,
 } from "../stack/restack.ts";
+import { assertNoForeignWorktreeHolds } from "../stack/worktrees.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
 import { formatBranch } from "../ui/format.ts";
 import {
@@ -60,8 +61,12 @@ export async function restackCommand(
     ctx.log.info("Stack is already up to date.");
     return;
   }
+  await assertNoForeignWorktreeHolds(
+    ctx.git,
+    plan.steps.map((step) => step.branch),
+  );
   await ctx.stateStore.writeRestackPlan(plan);
-  await runPlan(ctx, state, plan);
+  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, state, plan));
 }
 
 async function continueRestack(ctx: AppContext): Promise<void> {
@@ -91,10 +96,10 @@ async function continueRestack(ctx: AppContext): Promise<void> {
     await ctx.stateStore.write(nextState);
     const nextPlan = markStep(plan, conflicted.branch, "done");
     await ctx.stateStore.writeRestackPlan(nextPlan);
-    await runPlan(ctx, nextState, nextPlan);
+    await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, nextState, nextPlan));
     return;
   }
-  await runPlan(ctx, state, plan);
+  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, state, plan));
 }
 
 async function abortRestack(ctx: AppContext): Promise<void> {
@@ -106,11 +111,60 @@ async function abortRestack(ctx: AppContext): Promise<void> {
   ctx.log.info("Cleared the ado-stack restack plan. Branches already pushed were not rolled back.");
 }
 
+type CheckoutSnapshot = {
+  branch: string | undefined;
+  head: string;
+};
+
+async function snapshotCheckout(git: AppContext["git"]): Promise<CheckoutSnapshot> {
+  return {
+    branch: await git.currentBranch(),
+    head: await git.getBranchTip("HEAD"),
+  };
+}
+
+async function restoreCheckout(git: AppContext["git"], start: CheckoutSnapshot): Promise<void> {
+  if (await git.rebaseInProgress()) {
+    return;
+  }
+  const branch = await git.currentBranch();
+  if (start.branch !== undefined) {
+    if (branch !== start.branch) {
+      await git.checkout(start.branch);
+    }
+    return;
+  }
+  const head = await git.getBranchTip("HEAD");
+  if (head !== start.head) {
+    await git.run(["checkout", "--detach", start.head]);
+  }
+}
+
+async function restoreCheckoutAfter(
+  git: AppContext["git"],
+  action: () => Promise<void>,
+): Promise<void> {
+  const start = await snapshotCheckout(git);
+  try {
+    await action();
+  } catch (error) {
+    if (!(error instanceof RestackConflictError)) {
+      await restoreCheckout(git, start);
+    }
+    throw error;
+  }
+  await restoreCheckout(git, start);
+}
+
 async function runPlan(
   ctx: AppContext,
   state: StackState,
   initialPlan: RestackPlanState,
 ): Promise<void> {
+  const pending = initialPlan.steps
+    .filter((step) => step.status !== "done")
+    .map((step) => step.branch);
+  await assertNoForeignWorktreeHolds(ctx.git, pending);
   let current = state;
   let plan = initialPlan;
   for (const step of plan.steps) {

@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { CliError } from "../errors/cli-error.ts";
+import { type GitWorktree, parseWorktreePorcelain } from "./worktree.ts";
 
 export class GitError extends CliError {
   readonly args: readonly string[];
@@ -97,6 +98,14 @@ export class GitRepo {
     const result = await this.run(["branch", "--show-current"], { allowFailure: true });
     const name = result.stdout.trim();
     return name.length > 0 ? name : undefined;
+  }
+
+  async toplevel(): Promise<string> {
+    return this.text(["rev-parse", "--show-toplevel"]);
+  }
+
+  async listWorktrees(): Promise<GitWorktree[]> {
+    return parseWorktreePorcelain(await this.text(["worktree", "list", "--porcelain"]));
   }
 
   async workingTreeStatus(): Promise<WorkingTreeStatus> {
