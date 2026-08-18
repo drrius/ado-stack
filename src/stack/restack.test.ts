@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { StackState } from "../state/schema.ts";
 import { stackOrder } from "./graph.ts";
-import { applyRestackStepToState } from "./restack.ts";
+import { applyRestackStepToState, shortSha } from "./restack.ts";
 
 const state = (): StackState => ({
   version: 1,
@@ -34,6 +34,15 @@ const state = (): StackState => ({
       pullRequestId: 3,
     },
   },
+});
+
+describe("shortSha", () => {
+  test("does not pad or truncate a non-SHA placeholder", () => {
+    expect(shortSha("(unknown, never synced by ado-stack)")).toBe(
+      "(unknown, never synced by ado-stack)",
+    );
+    expect(shortSha("6cc53db9db2f5d7e68763bca59971f8d34daf091")).toBe("6cc53db");
+  });
 });
 
 describe("applyRestackStepToState", () => {

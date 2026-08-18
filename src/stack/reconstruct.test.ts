@@ -254,6 +254,25 @@ describe("reconstructForest", () => {
     expect(result.state.branches.feat?.parentTipAtCreation).toBe("parent-at-create");
   });
 
+  test("names an active pull request whose source is trunk", () => {
+    const result = reconstructForest({
+      base: base(),
+      pullRequests: [pr(1994, "leaf-b", "main"), pr(1735, "main", "other")],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches["leaf-b"]?.pullRequestId).toBe(1994);
+    expect(result.skipped).toEqual([
+      {
+        pullRequestId: 1735,
+        sourceBranch: "main",
+        reason: "source branch is the default branch",
+      },
+    ]);
+  });
+
   test("prefers property lastRestackBase over the recorded base", () => {
     const state = base();
     state.branches.feat = {

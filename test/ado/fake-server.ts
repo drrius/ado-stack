@@ -171,7 +171,7 @@ export class FakeAzureDevOps {
     const source = url.searchParams.get("searchCriteria.sourceRefName");
     const target = url.searchParams.get("searchCriteria.targetRefName");
     const top = Number(url.searchParams.get("$top") ?? "100");
-    const continuation = Number(url.searchParams.get("continuationToken") ?? "0");
+    const skip = Number(url.searchParams.get("$skip") ?? "0");
     let items = [...this.pullRequests.values()];
     if (status !== "all") {
       items = items.filter((pr) => pr.status === status);
@@ -182,12 +182,8 @@ export class FakeAzureDevOps {
     if (target) {
       items = items.filter((pr) => pr.targetRefName === target);
     }
-    const slice = items.slice(continuation, continuation + top);
-    const headers = new Headers({ "Content-Type": "application/json" });
-    if (continuation + top < items.length) {
-      headers.set("x-ms-continuationtoken", String(continuation + top));
-    }
-    return new Response(JSON.stringify({ count: items.length, value: slice }), { headers });
+    const slice = items.slice(skip, skip + top);
+    return json({ count: slice.length, value: slice });
   }
 }
 

@@ -113,4 +113,114 @@ describe("restack against fake Azure DevOps", () => {
       await repo.cleanup();
     }
   }, 30_000);
+
+  test("does not publish a branch that was never submitted", async () => {
+    const repo = await createTempRepo();
+    const fake = new FakeAzureDevOps({
+      organization: "example",
+      project: "Platform",
+      repository: "app",
+      token: "test-pat",
+    });
+    const env = { ADO_STACK_PAT: "test-pat" };
+    try {
+      const origin = await fake.listen();
+      await runCli(
+        [
+          "init",
+          "--organization",
+          origin,
+          "--project",
+          "Platform",
+          "--repository",
+          "app",
+          "--default-branch",
+          "main",
+        ],
+        { cwd: repo.dir, env },
+      );
+      const bare = await createTempRepo({ bare: true });
+      await repo.git.run(["remote", "add", "origin", bare.dir]);
+      await repo.git.push("origin", "main", { setUpstream: true });
+      await runCli(["create", "scratch/pushprobe"], { cwd: repo.dir, env });
+      await writeCommit(repo.git, "x.txt", "x\n", "x");
+      await advanceBareMain(bare.dir, "origin moved");
+      await repo.git.checkout("main");
+
+      const restack = await runCli(["restack"], { cwd: repo.dir, env });
+      expect(restack.exitCode).toBe(0);
+      const remote = await repo.git.run(["ls-remote", "origin", "refs/heads/scratch/pushprobe"]);
+      expect(remote.stdout.trim()).toBe("");
+      await bare.cleanup();
+    } finally {
+      fake.stop();
+      await repo.cleanup();
+    }
+  }, 30_000);
+
+  test("refuses a remote that ado-stack did not publish without truncating the message", async () => {
+    const repo = await createTempRepo();
+    const fake = new FakeAzureDevOps({
+      organization: "example",
+      project: "Platform",
+      repository: "app",
+      token: "test-pat",
+    });
+    const env = { ADO_STACK_PAT: "test-pat" };
+    try {
+      const origin = await fake.listen();
+      await runCli(
+        [
+          "init",
+          "--organization",
+          origin,
+          "--project",
+          "Platform",
+          "--repository",
+          "app",
+          "--default-branch",
+          "main",
+        ],
+        { cwd: repo.dir, env },
+      );
+      const bare = await createTempRepo({ bare: true });
+      await repo.git.run(["remote", "add", "origin", bare.dir]);
+      await repo.git.push("origin", "main", { setUpstream: true });
+      await runCli(["create", "scratch/pushprobe"], { cwd: repo.dir, env });
+      await writeCommit(repo.git, "x.txt", "x\n", "x");
+      await repo.git.push("origin", "scratch/pushprobe");
+      await advanceBareMain(bare.dir, "origin moved");
+      await repo.git.checkout("main");
+
+      const restack = await runCli(["restack"], { cwd: repo.dir, env });
+      expect(restack.exitCode).not.toBe(0);
+      expect(restack.stderr).toContain("ado-stack did not publish");
+      expect(restack.stderr).not.toContain("(unknow");
+      expect(restack.stderr).not.toContain("changed since your last sync");
+      const remote = await repo.git.run(["ls-remote", "origin", "refs/heads/scratch/pushprobe"]);
+      expect(remote.stdout).toContain("refs/heads/scratch/pushprobe");
+      await bare.cleanup();
+    } finally {
+      fake.stop();
+      await repo.cleanup();
+    }
+  }, 30_000);
 });
+
+async function advanceBareMain(bareDir: string, message: string): Promise<void> {
+  const worker = `${bareDir}-worker`;
+  expect(
+    await Bun.spawn(["git", "clone", bareDir, worker], { stdout: "pipe", stderr: "pipe" }).exited,
+  ).toBe(0);
+  for (const args of [
+    ["config", "user.email", "origin@example.com"],
+    ["config", "user.name", "origin"],
+    ["config", "commit.gpgsign", "false"],
+    ["commit", "--allow-empty", "-m", message],
+    ["push", "origin", "main"],
+  ]) {
+    expect(
+      await Bun.spawn(["git", "-C", worker, ...args], { stdout: "pipe", stderr: "pipe" }).exited,
+    ).toBe(0);
+  }
+}

@@ -25,6 +25,11 @@ describe("CLI flags", () => {
     expect(update.exitCode).toBe(0);
     expect(update.stdout).toContain("ado-stack update");
     expect(update.stdout).toContain("GitHub Releases");
+
+    const restack = await runCli(["restack", "--help"], { cwd: process.cwd() });
+    expect(restack.exitCode).toBe(0);
+    expect(restack.stdout).toContain("update its remote");
+    expect(restack.stdout).toContain("never submitted");
   });
 
   test("rejects unknown flags and PATs on argv", async () => {
