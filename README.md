@@ -67,6 +67,49 @@ Run `ado-stack` with no arguments at a terminal to open the interactive UI. The 
 
 Scripts and CI keep the argv CLI. A bare `ado-stack` prints help when stdin or stdout is not a TTY. Pass `--no-tui` or set `ADO_STACK_NO_TUI=1` to opt out explicitly. Both surfaces run the same command implementations.
 
+## Status views
+
+After `init`, the same forest is available as terminal text, a local HTML graph, or a VS Code / Cursor sidebar. All three call the CLI. None of them talk to Azure DevOps on their own.
+
+### Terminal
+
+```bash
+ado-stack status
+ado-stack status --urls
+ado-stack status --width 80
+ado-stack status --json
+ado-stack status --json --preflight
+```
+
+One branch is one line. Titles shrink to the terminal width (or 100 columns when the width is unknown). `--urls` adds the Azure DevOps link on that same line. `--json` prints only the nested forest, so you can pipe it. `--json` and `--web` cannot be combined.
+
+### Local web graph
+
+```bash
+ado-stack status --web
+```
+
+That writes `.git/ado-stack/status.html`, prints the path, and tries to open it in your browser. The file is self-contained. No CDN, no server. Open the printed path yourself if the browser launcher fails, which is common on a headless host.
+
+`--web` always runs a restack preflight. Each node shows whether a restack is needed and, when one would conflict, which files. The check replays each unique commit the way `restack` does, including children that would move because a parent is moving. It is a preview. It does not start a rebase.
+
+`--json --preflight` attaches the same conflict data without writing HTML.
+
+### VS Code and Cursor
+
+The extension is a sidebar over the CLI, not a second stack client. `ado-stack` must be on your `PATH` (or set `adoStack.command` to an absolute path).
+
+1. Install the CLI using the installer above, or run it from source with Bun.
+2. In VS Code or Cursor, open the Command Palette and run **Extensions: Install from VSIX…**
+3. Choose `extensions/ado-stack/ado-stack.vsix` from a clone of this repo.
+4. Open the Git workspace you already initialized. Click the **ado-stack** icon in the activity bar.
+
+Click a branch in the tree to check it out. The Command Palette also has Refresh, Restack, Submit, Up, Down, Init, and Checkout Branch. Checkout from the palette asks which branch. Up from a fork asks which child, the same rule as `ado-stack up`.
+
+If the binary is missing, you get an error that names `adoStack.command`. If the repo has no state, the extension offers **Run init**. A restack that stops on a Git conflict tells you the rebase was left in place. An Azure DevOps HTTP conflict is just a failed submit. It is not a leftover rebase.
+
+Rebuild the VSIX after changing the extension with `bun run extension:package`.
+
 ## Workflow
 
 ```text
@@ -82,9 +125,7 @@ If `schema` squash-merges into `main`, run `ado-stack restack`. The tool rebases
 | `ado-stack init` | Detect the Azure Repos remote and write `.git/ado-stack/state.json`. Rebuilds from PR targets and metadata when parentage agrees. |
 | `ado-stack create <name>` | Create a stack branch from `HEAD`. If `HEAD` already has children, the new branch is a sibling. Honors `branchPrefix`. |
 | `ado-stack submit` | Push branches in parent-before-child order and create or update PRs. Writes namespaced PR properties and a managed description block. |
-| `ado-stack status` | Show the stack forest, one line per branch. `--json` prints the same model. `--web` opens a local graph with a restack conflict preflight. |
-
-The VS Code / Cursor extension in `extensions/ado-stack` is a sidebar over these commands. Package it with `bun run extension:package`.
+| `ado-stack status` | Show the stack forest, one line per branch. `--json` prints the same model. `--web` writes `.git/ado-stack/status.html`, runs a restack conflict preflight, and opens the file. See [Status views](#status-views). |
 | `ado-stack restack` | Rebase each layer onto its live parent, depth-first from each root. `--continue` / `--abort` after conflicts. |
 | `ado-stack up` / `down` | Move to a child or the parent. `up` from a fork requires the child name. |
 | `ado-stack checkout <ref>` | Check out a branch name or PR number. |
