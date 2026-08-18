@@ -17,6 +17,7 @@ import {
 import { resolveRestackWorktrees, restackRebaseGit } from "../stack/worktrees.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
 import { formatBranch } from "../ui/format.ts";
+import { createLogger } from "../ui/log.ts";
 import { type AppContext, requireState, resolveAdoAccess } from "./context.ts";
 import {
   loadTrackedSnapshots,
@@ -24,6 +25,13 @@ import {
   retargetStackPullRequest,
 } from "./pull-requests.ts";
 import { reconcileCompletedMerges } from "./reconcile.ts";
+import {
+  type RestackReporter,
+  type RestackStatusReport,
+  conflictBranchOf,
+  jsonRestackReporter,
+  serializeRestackEvent,
+} from "./restack-events.ts";
 
 export async function previewRestack(ctx: AppContext): Promise<RestackPlanState> {
   const state = await requireState(ctx);
@@ -37,12 +45,147 @@ export async function restackCommand(
   ctx: AppContext,
   flags: Record<string, string | boolean>,
 ): Promise<void> {
+  const json = flags.json === true;
+  if (flags.status === true) {
+    if (flags.abort === true || flags.continue === true) {
+      throw new CliError("Use --status alone. It only reads state.");
+    }
+    await restackStatus(ctx, { json });
+    return;
+  }
+  const runCtx = json ? withStderrLogger(ctx) : ctx;
+  const reporter = json
+    ? jsonRestackReporter((line) => process.stdout.write(`${line}\n`))
+    : humanRestackReporter(runCtx);
+  try {
+    await runRestackCommand(runCtx, flags, reporter);
+  } catch (error) {
+    if (json) {
+      await emitFailureEvent(runCtx, error);
+    }
+    throw error;
+  }
+}
+
+function withStderrLogger(ctx: AppContext): AppContext {
+  return {
+    ...ctx,
+    log: createLogger({
+      verbose: ctx.verbose,
+      debug: ctx.debug,
+      stdout: (line) => console.error(line),
+    }),
+  };
+}
+
+function humanRestackReporter(ctx: AppContext): RestackReporter {
+  const prefix = ctx.config.branchPrefix;
+  return {
+    plan: () => {},
+    upToDate: () => ctx.log.info("Stack is already up to date."),
+    stepStart: () => {},
+    stepDone: (step) =>
+      ctx.log.success(
+        `Restacked ${formatBranch(step.branch, prefix)} onto ${formatBranch(step.onto, prefix)}`,
+      ),
+    done: (branches) =>
+      ctx.log.info(
+        `Stack restacked: ${branches.map((branch) => formatBranch(branch, prefix)).join(", ")}`,
+      ),
+    aborted: () => {},
+  };
+}
+
+async function emitFailureEvent(ctx: AppContext, error: unknown): Promise<void> {
+  if (error instanceof RestackConflictError) {
+    const worktreePath = error.worktreePath ?? (await safeToplevel(ctx.git));
+    const files = await safeConflictedFiles(
+      error.worktreePath === undefined ? ctx.git : new GitRepo(error.worktreePath),
+    );
+    process.stdout.write(
+      `${serializeRestackEvent({
+        event: "conflict",
+        branch: error.branch,
+        worktreePath,
+        files,
+        blocked: error.blocked,
+        untouched: error.untouched,
+      })}\n`,
+    );
+    return;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  process.stdout.write(`${serializeRestackEvent({ event: "error", message })}\n`);
+}
+
+async function safeToplevel(git: AppContext["git"]): Promise<string> {
+  try {
+    return await git.toplevel();
+  } catch {
+    return git.cwd;
+  }
+}
+
+async function safeConflictedFiles(git: GitRepo): Promise<string[]> {
+  try {
+    return await git.conflictedFiles();
+  } catch {
+    return [];
+  }
+}
+
+export async function restackStatus(
+  ctx: AppContext,
+  options: { json: boolean },
+): Promise<RestackStatusReport> {
+  const plan = (await ctx.stateStore.readRestackPlan()) ?? null;
+  const pending = plan
+    ? plan.steps.filter((step) => step.status !== "done").map((step) => step.branch)
+    : [];
+  const rebaseGit = (await restackRebaseGit(ctx.git, pending)) ?? ctx.git;
+  const inProgress = await rebaseGit.rebaseInProgress();
+  const report: RestackStatusReport = {
+    plan,
+    conflictBranch: conflictBranchOf(plan),
+    rebase: inProgress
+      ? {
+          inProgress: true,
+          worktreePath: await safeToplevel(rebaseGit),
+          conflictedFiles: await safeConflictedFiles(rebaseGit),
+        }
+      : { inProgress: false },
+  };
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+    return report;
+  }
+  if (!report.plan) {
+    ctx.log.info("No restack is in progress.");
+    return report;
+  }
+  for (const step of report.plan.steps) {
+    ctx.log.info(`${step.status.padEnd(11)} ${step.branch} → ${step.onto}`);
+  }
+  if (report.rebase.inProgress) {
+    ctx.log.info(`Git rebase in progress at ${report.rebase.worktreePath}`);
+    for (const file of report.rebase.conflictedFiles) {
+      ctx.log.info(`  conflict: ${file}`);
+    }
+  }
+  return report;
+}
+
+async function runRestackCommand(
+  ctx: AppContext,
+  flags: Record<string, string | boolean>,
+  reporter: RestackReporter,
+): Promise<void> {
   if (flags.abort === true) {
-    await abortRestack(ctx);
+    await abortRestack(ctx, reporter);
     return;
   }
   if (flags.continue === true) {
-    await continueRestack(ctx);
+    await continueRestack(ctx, reporter);
     return;
   }
   const state = await requireState(ctx);
@@ -57,18 +200,19 @@ export async function restackCommand(
   const pullRequests = await loadSnapshots(ctx, reconciled);
   const plan = await planRestack({ git: ctx.git, state: reconciled, pullRequests });
   if (plan.steps.length === 0) {
-    ctx.log.info("Stack is already up to date.");
+    reporter.upToDate();
     return;
   }
+  reporter.plan(plan);
   await resolveRestackWorktrees(
     ctx.git,
     plan.steps.map((step) => step.branch),
   );
   await ctx.stateStore.writeRestackPlan(plan);
-  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, reconciled, plan));
+  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, reconciled, plan, reporter));
 }
 
-async function continueRestack(ctx: AppContext): Promise<void> {
+async function continueRestack(ctx: AppContext, reporter: RestackReporter): Promise<void> {
   const plan = await ctx.stateStore.readRestackPlan();
   if (!plan) {
     throw new CliError("No restack is in progress.");
@@ -103,13 +247,14 @@ async function continueRestack(ctx: AppContext): Promise<void> {
     await ctx.stateStore.write(nextState);
     const nextPlan = markStep(plan, conflicted.branch, "done");
     await ctx.stateStore.writeRestackPlan(nextPlan);
-    await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, nextState, nextPlan));
+    reporter.stepDone(conflicted);
+    await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, nextState, nextPlan, reporter));
     return;
   }
-  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, state, plan));
+  await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, state, plan, reporter));
 }
 
-async function abortRestack(ctx: AppContext): Promise<void> {
+async function abortRestack(ctx: AppContext, reporter: RestackReporter): Promise<void> {
   const plan = await ctx.stateStore.readRestackPlan();
   const branches = plan
     ? plan.steps.filter((step) => step.status !== "done").map((step) => step.branch)
@@ -121,6 +266,7 @@ async function abortRestack(ctx: AppContext): Promise<void> {
   }
   await ctx.stateStore.clearRestackPlan();
   ctx.log.info("Cleared the ado-stack restack plan. Branches already pushed were not rolled back.");
+  reporter.aborted();
 }
 
 type CheckoutSnapshot = {
@@ -170,6 +316,7 @@ async function runPlan(
   ctx: AppContext,
   state: StackState,
   initialPlan: RestackPlanState,
+  reporter: RestackReporter,
 ): Promise<void> {
   const pending = initialPlan.steps
     .filter((step) => step.status !== "done")
@@ -195,6 +342,7 @@ async function runPlan(
       ),
     };
     await ctx.stateStore.writeRestackPlan(plan);
+    reporter.stepStart(live);
     const site = sites.get(live.branch) ?? currentPath;
     const rebaseGit = sameWorktreePath(site, currentPath) ? ctx.git : new GitRepo(site);
     try {
@@ -220,16 +368,10 @@ async function runPlan(
     await ctx.stateStore.write(current);
     plan = markStep(plan, step.branch, "done");
     await ctx.stateStore.writeRestackPlan(plan);
-    ctx.log.success(
-      `Restacked ${formatBranch(step.branch, ctx.config.branchPrefix)} onto ${formatBranch(step.onto, ctx.config.branchPrefix)}`,
-    );
+    reporter.stepDone(live);
   }
   await ctx.stateStore.clearRestackPlan();
-  ctx.log.info(
-    `Stack restacked: ${stackOrder(current)
-      .map((branch) => formatBranch(branch, ctx.config.branchPrefix))
-      .join(", ")}`,
-  );
+  reporter.done(stackOrder(current));
 }
 
 async function pushRewritten(ctx: AppContext, state: StackState, step: RestackStep): Promise<void> {

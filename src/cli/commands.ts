@@ -154,12 +154,14 @@ export const COMMAND_SPECS: CommandSpec[] = [
     name: "restack",
     group: "recovery",
     summary: "Rebase stack branches onto updated parents and update submitted remotes",
-    usage: ["ado-stack restack [--continue | --abort]"],
+    usage: ["ado-stack restack [--continue | --abort | --status] [--json]"],
     detail:
-      "Repair completed pull requests first, then rebase each remaining stack branch onto its live parent and update its remote. Branches that were never submitted are rebased locally only. A completed parent re-parents every child and retargets those pull requests before any rebase. Stops on conflicts and leaves Git rebase state in place. A branch held by another worktree is rebased there when that tree is clean. Dirty worktrees are named and refused before any rebase or push.",
+      "Repair completed pull requests first, then rebase each remaining stack branch onto its live parent and update its remote. Branches that were never submitted are rebased locally only. A completed parent re-parents every child and retargets those pull requests before any rebase. Stops on conflicts and leaves Git rebase state in place. A branch held by another worktree is rebased there when that tree is clean. Dirty worktrees are named and refused before any rebase or push. --json streams machine-readable events on stdout, one JSON object per line (plan, step-start, step-done, conflict with worktree path and conflicted files, done, aborted, error); human messages move to stderr. --status reads the persisted restack plan and live rebase state without changing anything, as text or with --json as one JSON object.",
     flags: [
       { name: "continue", kind: "boolean" },
       { name: "abort", kind: "boolean" },
+      { name: "status", kind: "boolean" },
+      { name: "json", kind: "boolean" },
       { name: "help", kind: "boolean" },
     ],
   },
