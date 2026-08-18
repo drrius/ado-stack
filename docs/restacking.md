@@ -86,7 +86,7 @@ C: M-S-B1'-B2'-C1'   (after C is restacked onto B)
 
 `A1`/`A2` are not replayed. They are not in `A2..B`. Only `B1` and `B2` are.
 
-`B`'s PR is retargeted to `main`. `C` still targets `B`. `A` is dropped from tracked stack state. Local Git branches are not deleted.
+`B`'s PR is retargeted to `main`. `C` still targets `B`. `A` is dropped from tracked stack state once no remaining child records it as parent. If `A` had several children, restack keeps `A` until every surviving child has been reparented, so a conflict or abort cannot leave a missing parent. Local Git branches are not deleted.
 
 ## What metadata distinguishes A from B
 
@@ -98,7 +98,7 @@ Remote PR property `ado-stack.last-restack-base` stores the same SHA so a fresh 
 
 Before `rebase --onto`:
 
-- the branch is in the tracked linear stack
+- the branch is in the tracked stack
 - `oldBase` is an ancestor of the branch
 - the unique commit list is non-empty
 - the remote tip equals `lastKnownRemoteTip` (no unknown remote commits)

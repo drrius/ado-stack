@@ -11,6 +11,7 @@ import {
   RestackConflictError,
   applyRestackStepToState,
   assertSafeRewrite,
+  conflictScope,
   executeRestackStep,
   markStep,
   planRestack,
@@ -134,6 +135,8 @@ async function runPlan(
     } catch (error) {
       if (error instanceof RestackConflictError) {
         await ctx.stateStore.writeRestackPlan(markStep(plan, step.branch, "conflict"));
+        const scope = conflictScope(current, plan, step.branch);
+        throw new RestackConflictError(error.branch, error, scope);
       }
       throw error;
     }
@@ -150,7 +153,7 @@ async function runPlan(
   ctx.log.info(
     `Stack restacked: ${stackOrder(current)
       .map((branch) => formatBranch(branch, ctx.config.branchPrefix))
-      .join(" → ")}`,
+      .join(", ")}`,
   );
 }
 

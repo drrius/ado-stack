@@ -9,7 +9,7 @@ import { CliError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
 import { assertSafeRewrite } from "../stack/restack.ts";
 import type { StackState } from "../state/schema.ts";
-import { formatBranch, formatStackPrChain, pullRequestWebUrl } from "../ui/format.ts";
+import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import { logNext } from "../ui/next.ts";
 import { type AppContext, createAdoClient, refsHeads, requireState } from "./context.ts";
 
@@ -114,6 +114,7 @@ export async function submitCommand(
     title: pr.title,
     current: false,
     branch,
+    parent: state.branches[branch]?.parent ?? state.defaultBranch,
   }));
 
   for (const { branch, pr } of submitted) {
@@ -124,8 +125,7 @@ export async function submitCommand(
     const full = await ado.getPullRequest(pr.pullRequestId);
     const block = generateStackBlock(
       items.map((item) => ({
-        id: item.id,
-        title: item.title,
+        ...item,
         current: item.branch === branch,
       })),
     );
@@ -148,7 +148,9 @@ export async function submitCommand(
   await ctx.stateStore.write(state);
   ctx.log.info("");
   ctx.log.info(
-    `Stack submitted: ${formatStackPrChain(submitted.map(({ pr }) => pr.pullRequestId))}`,
+    `Submitted ${submitted.length} pull requests in parent-before-child order: ${submitted
+      .map(({ pr }) => `#${pr.pullRequestId}`)
+      .join(", ")}`,
   );
   logNext(ctx.log, "review and merge the bottom PR in Azure DevOps, then ado-stack restack");
 }

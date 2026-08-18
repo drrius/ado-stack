@@ -139,13 +139,15 @@ function renderStatus(ctx: AppContext, status: StackStatus): void {
   }
   ctx.log.info("Stack");
   ctx.log.info("");
+  ctx.log.info(`  ${formatBranch(status.defaultBranch, prefix)}`);
   if (status.rows.length === 0) {
     ctx.log.info("  (empty)");
   }
-  for (const row of status.rows) {
-    ctx.log.info(formatRowLine(row, prefix));
-    if (row.pr.kind === "loaded") {
-      ctx.log.info(`    ${row.pr.url}`);
+  for (const line of forestLayout(status.rows, status.defaultBranch)) {
+    ctx.log.info(`  ${line.prefix}${line.connector}${formatRowLine(line.row, prefix)}`);
+    if (line.row.pr.kind === "loaded") {
+      const hanging = line.connector === "└── " ? "    " : "│   ";
+      ctx.log.info(`  ${line.prefix}${hanging}${line.row.pr.url}`);
     }
   }
   ctx.log.info("");
@@ -211,13 +213,38 @@ export function rowFlags(row: StatusRow): string[] {
   return flags;
 }
 
+export function forestLayout(
+  rows: StatusRow[],
+  defaultBranch: string,
+): Array<{ prefix: string; connector: string; row: StatusRow }> {
+  const byParent = new Map<string, StatusRow[]>();
+  for (const row of rows) {
+    const list = byParent.get(row.parent) ?? [];
+    list.push(row);
+    byParent.set(row.parent, list);
+  }
+  const lines: Array<{ prefix: string; connector: string; row: StatusRow }> = [];
+  const walk = (parent: string, prefix: string): void => {
+    const children = byParent.get(parent) ?? [];
+    for (const [index, row] of children.entries()) {
+      if (!row) {
+        continue;
+      }
+      const last = index === children.length - 1;
+      lines.push({ prefix, connector: last ? "└── " : "├── ", row });
+      walk(row.branch, `${prefix}${last ? "    " : "│   "}`);
+    }
+  };
+  walk(defaultBranch, "");
+  return lines;
+}
+
 function formatRowLine(row: StatusRow, prefix: string): string {
   const prLabel = row.pr.kind === "none" ? "no-pr" : `#${row.pr.id}`;
-  const name = formatBranch(row.branch, prefix).padEnd(12);
-  const parent = formatBranch(row.parent, prefix).padEnd(10);
-  const status = prStatusLabel(row.pr).padEnd(10);
+  const name = formatBranch(row.branch, prefix);
+  const status = prStatusLabel(row.pr);
   const title = row.pr.kind === "loaded" && row.pr.title ? `  ${row.pr.title}` : "";
-  return `  ${prLabel.padEnd(6)} ${name} → ${parent} ${status} ${rowFlags(row).join("  ")}${title}`.trimEnd();
+  return `${prLabel} ${name}  ${status}  ${rowFlags(row).join("  ")}${title}`.trimEnd();
 }
 
 function toSnapshots(prs: Map<number, AdoPullRequest>): Map<number, PullRequestSnapshot> {

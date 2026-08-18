@@ -1,5 +1,5 @@
 import { CliError } from "../errors/cli-error.ts";
-import { childOf, isTracked } from "../stack/graph.ts";
+import { isTracked } from "../stack/graph.ts";
 import { applyBranchPrefix, validateBranchName } from "../stack/names.ts";
 import { formatBranch } from "../ui/format.ts";
 import type { AppContext } from "./context.ts";
@@ -30,12 +30,6 @@ export async function createCommand(ctx: AppContext, args: string[]): Promise<vo
   if (current !== state.defaultBranch && !isTracked(state, current)) {
     throw new CliError(
       `Current branch \`${current}\` is not the default branch and is not in the stack.\n\nCheck out \`${state.defaultBranch}\` or a tracked stack branch first.`,
-    );
-  }
-  const existingChild = childOf(state, current);
-  if (existingChild) {
-    throw new CliError(
-      `\`${current}\` already has a child \`${existingChild}\`.\n\nado-stack v1 is linear. Check out \`${existingChild}\` to extend the stack, or restack first.`,
     );
   }
   const parentTip = await ctx.git.getBranchTip(current);

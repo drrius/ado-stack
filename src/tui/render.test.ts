@@ -72,6 +72,9 @@ describe("renderStackLines", () => {
     expect(output).toContain("↑ restack needed");
     expect(output).toContain("local/remote diverge");
     expect(output).toContain("Next: restack onto latest parents");
+    expect(output).toContain("└──");
+    expect(output).toContain("feat-a");
+    expect(output).toContain("feat-b");
   });
 
   test("issues render as notes", () => {

@@ -6,9 +6,9 @@ Azure DevOps can target one PR at another branch. It does not give you a stacked
 
 ```text
 main
-└── PR 1: schema
-    └── PR 2: API
-        └── PR 3: UI
+├── PR 1: schema
+└── PR 2: API
+    └── PR 3: UI
 ```
 
 Smaller reviews land first. You keep building on top without waiting. Each PR shows only its own diff. When a lower PR squash-merges, `ado-stack restack` rebases the rest onto the new base without replaying the merged commits.
@@ -63,7 +63,7 @@ ado-stack submit
 
 ## Interactive UI
 
-Run `ado-stack` with no arguments at a terminal to open the interactive UI. The home screen shows the stack from trunk to tip with PR state, links, and the recommended next step. From there you can create a branch, submit with a preview, restack with a plan and guided conflict recovery, navigate the stack, initialize a repository, and log in with a hidden PAT prompt.
+Run `ado-stack` with no arguments at a terminal to open the interactive UI. The home screen shows the stack forest with PR state, links, and the recommended next step. From there you can create a branch, submit with a preview, restack with a plan and guided conflict recovery, navigate the stack, initialize a repository, and log in with a hidden PAT prompt.
 
 Scripts and CI keep the argv CLI. A bare `ado-stack` prints help when stdin or stdout is not a TTY. Pass `--no-tui` or set `ADO_STACK_NO_TUI=1` to opt out explicitly. Both surfaces run the same command implementations.
 
@@ -79,16 +79,16 @@ If `schema` squash-merges into `main`, run `ado-stack restack`. The tool rebases
 
 | Command | What it does |
 | --- | --- |
-| `ado-stack init` | Detect the Azure Repos remote and write `.git/ado-stack/state.json`. Rebuilds from PR properties when the metadata is unambiguous. |
-| `ado-stack create <name>` | Create the next linear stack branch from `HEAD`. Honors `branchPrefix`. |
-| `ado-stack submit` | Push branches and create or update PRs. Writes namespaced PR properties and a managed description block. |
-| `ado-stack status` | Show stack order, PR state, sync, and restack needs. |
-| `ado-stack restack` | Rebase each layer onto its live parent. `--continue` / `--abort` after conflicts. |
-| `ado-stack up` / `down` | Move to the child or parent branch. |
+| `ado-stack init` | Detect the Azure Repos remote and write `.git/ado-stack/state.json`. Rebuilds from PR targets and metadata when parentage agrees. |
+| `ado-stack create <name>` | Create a stack branch from `HEAD`. If `HEAD` already has children, the new branch is a sibling. Honors `branchPrefix`. |
+| `ado-stack submit` | Push branches in parent-before-child order and create or update PRs. Writes namespaced PR properties and a managed description block. |
+| `ado-stack status` | Show the stack forest, PR state, sync, and restack needs. |
+| `ado-stack restack` | Rebase each layer onto its live parent, depth-first from each root. `--continue` / `--abort` after conflicts. |
+| `ado-stack up` / `down` | Move to a child or the parent. `up` from a fork requires the child name. |
 | `ado-stack checkout <ref>` | Check out a branch name or PR number. |
 | `ado-stack auth` | Show, store, or clear credentials. |
 | `ado-stack config` | Get or set `organization`, `project`, `repository`, `defaultBranch`, `branchPrefix`, `authMode`. |
-| `ado-stack repair` | Rebuild local state when Git and Azure DevOps agree. |
+| `ado-stack repair` | Rebuild local state when Git and Azure DevOps agree. Names cycles and parent disagreements; does not guess. |
 
 `ado-stack --help` and `ado-stack --version` work on the compiled binary. Version comes from `package.json`.
 
@@ -132,11 +132,9 @@ No user name, organization, or Azure DevOps URL is hardcoded into commands.
 
 ## Limitations
 
-This is a linear-stack MVP.
+Stacks are a forest of trees, not a DAG. A branch has one parent. It may have several children.
 
-It does not support DAG stacks, multiple parents, GitHub, GitLab, Bitbucket, merge queues, hosted services, telemetry, automatic conflict resolution, or deleting remote branches.
-
-A valid stack looks like `main ← A ← B ← C`. Sibling branches are rejected.
+It does not support multiple parents, GitHub, GitLab, Bitbucket, merge queues, hosted services, telemetry, automatic conflict resolution, or deleting remote branches.
 
 ## Development
 

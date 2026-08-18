@@ -1,27 +1,25 @@
+import { hydrateForestTips } from "../stack/hydrate.ts";
+import { formatReconstructConflicts } from "../stack/reconstruct.ts";
 import { type AppContext, createAdoClient, requireState } from "./context.ts";
 import { reconstructFromAdo } from "./init.ts";
 
 export async function repairCommand(ctx: AppContext): Promise<void> {
   const state = await requireState(ctx);
+  const before = JSON.stringify(state);
   const ado = await createAdoClient(ctx, state);
   const rebuilt = await reconstructFromAdo(ctx, ado, state);
-  if (!rebuilt) {
+  if (!rebuilt.ok) {
     ctx.log.warn(
-      "Could not rebuild an unambiguous stack from Azure DevOps metadata. Local state was left unchanged.",
+      `${formatReconstructConflicts(rebuilt.conflicts)}\n\nLocal state was left unchanged.`,
     );
     return;
   }
-  for (const [name, branch] of Object.entries(rebuilt.branches)) {
-    if (await ctx.git.branchExists(name)) {
-      branch.lastLocalTip = await ctx.git.getBranchTip(name);
-    }
-    if ((await ctx.git.remoteBranchExists(state.remoteName, name)) && branch.lastKnownRemoteTip) {
-      const actual = await ctx.git.getBranchTip(`${state.remoteName}/${name}`);
-      if (actual === branch.lastLocalTip) {
-        branch.lastKnownRemoteTip = actual;
-      }
-    }
+  await hydrateForestTips(ctx.git, rebuilt.state);
+  const after = JSON.stringify(rebuilt.state);
+  if (after === before) {
+    ctx.log.success("Local stack state already matches Azure DevOps parentage.");
+    return;
   }
-  await ctx.stateStore.write(rebuilt);
+  await ctx.stateStore.write(rebuilt.state);
   ctx.log.success("Rebuilt local stack state from Azure DevOps metadata.");
 }
