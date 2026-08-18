@@ -61,12 +61,13 @@ describe("restack and extra worktrees", () => {
       const bBefore = await repo.git.getBranchTip("B");
       try {
         await withWorktree(repo, "B", async (worktree) => {
+          await Bun.write(join(worktree.dir, "dirty.txt"), "held\n");
           const restack = await runCli(["restack"], { cwd: repo.dir });
           expect(restack.exitCode).not.toBe(0);
           expect(restack.stderr).toContain("B");
           expect(restack.stderr).toContain(worktree.dir);
           expect(restack.stderr).toContain("No branches were rebased or pushed.");
-          expect(restack.stderr).not.toContain("Restacked");
+          expect(restack.stdout).not.toContain("Restacked");
           expect(await repo.git.getBranchTip("A")).toBe(aBefore);
           expect(await repo.git.getBranchTip("B")).toBe(bBefore);
           expect(await repo.git.currentBranch()).toBe("main");
@@ -97,6 +98,36 @@ describe("restack and extra worktrees", () => {
         expect(restack.stdout).toContain("Restacked A");
         expect(await repo.git.currentBranch()).toBe("main");
         expect(await repo.git.isAncestor(await repo.git.getBranchTip("main"), "A")).toBe(true);
+      } finally {
+        await origin.cleanup();
+      }
+    } finally {
+      await repo.cleanup();
+    }
+  }, 30_000);
+
+  test("rebases a clean held branch in its worktree", async () => {
+    const repo = await createTempRepo();
+    try {
+      await seedStack(repo.dir);
+      await runCli(["create", "A"], { cwd: repo.dir });
+      await writeCommit(repo.git, "a.txt", "A\n", "A");
+      await runCli(["create", "B"], { cwd: repo.dir });
+      await writeCommit(repo.git, "b.txt", "B\n", "B");
+      await repo.git.checkout("main");
+      await writeCommit(repo.git, "trunk.txt", "move\n", "trunk");
+      const origin = await addOrigin(repo);
+      try {
+        await withWorktree(repo, "B", async (worktree) => {
+          const restack = await runCli(["restack"], { cwd: repo.dir });
+          expect(restack.exitCode).toBe(0);
+          expect(restack.stdout).toContain("Restacked A");
+          expect(restack.stdout).toContain("Restacked B");
+          expect(await repo.git.currentBranch()).toBe("main");
+          expect(await worktree.git.currentBranch()).toBe("B");
+          expect(await repo.git.isAncestor(await repo.git.getBranchTip("main"), "A")).toBe(true);
+          expect(await repo.git.isAncestor(await repo.git.getBranchTip("A"), "B")).toBe(true);
+        });
       } finally {
         await origin.cleanup();
       }

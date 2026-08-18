@@ -72,7 +72,7 @@ Parentage is the PR target branch. Namespaced properties carry `stack-id` and `l
 
 `init` and `repair` list pull requests and build a forest from target branches. A parent with several children is recorded. They refuse, and leave `state.json` unchanged, when sources disagree: a cycle, a recorded or property parent that is not the PR target, a missing parent, or more than one `stack-id` on property-bearing PRs. The refusal names the branches. Multiple children are not a conflict.
 
-Local state is never trusted blindly. `status` compares Git tips, recorded SHAs, and PR source/target. Restack refuses to rewrite when the remote tip is not the last tip ado-stack pushed. It also maps the operation set through `git worktree list --porcelain` and refuses the whole run when another worktree holds a branch that would be rebased.
+Local state is never trusted blindly. `status` compares Git tips, recorded SHAs, and PR source/target. Restack refuses to rewrite when the remote tip is not the last tip ado-stack pushed. It maps the operation set through `git worktree list --porcelain`. Clean holding worktrees are rebased in place. Dirty holding worktrees refuse the whole run before the first rebase.
 
 ## Auth
 

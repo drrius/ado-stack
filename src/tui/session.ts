@@ -20,6 +20,7 @@ import { formatError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
 import { applyBranchPrefix, validateBranchName } from "../stack/names.ts";
 import { RestackConflictError } from "../stack/restack.ts";
+import { gitWithRebaseInProgress } from "../stack/worktrees.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import { createLogger } from "../ui/log.ts";
 import { redactText } from "../ui/redact.ts";
@@ -418,7 +419,7 @@ async function flowSubmit(session: Session): Promise<void> {
 
 async function flowRestack(session: Session): Promise<void> {
   const { ctx, io } = session;
-  if (await ctx.git.rebaseInProgress()) {
+  if ((await gitWithRebaseInProgress(ctx.git)) !== undefined) {
     log.warn("A Git rebase is in progress. Finish or abort it below.", { ...io });
     await conflictLoop(session);
     return;

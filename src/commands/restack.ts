@@ -5,6 +5,8 @@ import {
   propertyPatches,
 } from "../ado/properties.ts";
 import { CliError } from "../errors/cli-error.ts";
+import { GitRepo } from "../git/git.ts";
+import { sameWorktreePath } from "../git/worktree.ts";
 import { stackOrder } from "../stack/graph.ts";
 import {
   type PullRequestSnapshot,
@@ -17,7 +19,7 @@ import {
   planRestack,
   resolveOntoSha,
 } from "../stack/restack.ts";
-import { assertNoForeignWorktreeHolds } from "../stack/worktrees.ts";
+import { gitWithRebaseInProgress, resolveRestackWorktrees } from "../stack/worktrees.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
 import { formatBranch } from "../ui/format.ts";
 import {
@@ -61,7 +63,7 @@ export async function restackCommand(
     ctx.log.info("Stack is already up to date.");
     return;
   }
-  await assertNoForeignWorktreeHolds(
+  await resolveRestackWorktrees(
     ctx.git,
     plan.steps.map((step) => step.branch),
   );
@@ -74,9 +76,13 @@ async function continueRestack(ctx: AppContext): Promise<void> {
   if (!plan) {
     throw new CliError("No restack is in progress.");
   }
-  if (await ctx.git.rebaseInProgress()) {
+  const rebaseGit = (await gitWithRebaseInProgress(ctx.git)) ?? ctx.git;
+  if (await rebaseGit.rebaseInProgress()) {
+    const where = sameWorktreePath(rebaseGit.cwd, ctx.git.cwd)
+      ? ""
+      : `\n\nThe rebase is in the worktree at:\n  ${rebaseGit.cwd}`;
     throw new CliError(
-      "Git rebase is still in progress.\n\nResolve conflicts, `git add` the files, run `git rebase --continue`, then `ado-stack restack --continue`.",
+      `Git rebase is still in progress.${where}\n\nResolve conflicts, \`git add\` the files, run \`git rebase --continue\`, then \`ado-stack restack --continue\`.`,
     );
   }
   const state = await requireState(ctx);
@@ -103,8 +109,9 @@ async function continueRestack(ctx: AppContext): Promise<void> {
 }
 
 async function abortRestack(ctx: AppContext): Promise<void> {
-  if (await ctx.git.rebaseInProgress()) {
-    await ctx.git.abortRebase();
+  const rebaseGit = (await gitWithRebaseInProgress(ctx.git)) ?? ctx.git;
+  if (await rebaseGit.rebaseInProgress()) {
+    await rebaseGit.abortRebase();
     ctx.log.info("Aborted the in-progress Git rebase.");
   }
   await ctx.stateStore.clearRestackPlan();
@@ -164,7 +171,8 @@ async function runPlan(
   const pending = initialPlan.steps
     .filter((step) => step.status !== "done")
     .map((step) => step.branch);
-  await assertNoForeignWorktreeHolds(ctx.git, pending);
+  const sites = await resolveRestackWorktrees(ctx.git, pending);
+  const currentPath = await ctx.git.toplevel();
   let current = state;
   let plan = initialPlan;
   for (const step of plan.steps) {
@@ -184,13 +192,23 @@ async function runPlan(
       ),
     };
     await ctx.stateStore.writeRestackPlan(plan);
+    const site = sites.get(live.branch) ?? currentPath;
+    const rebaseGit = sameWorktreePath(site, currentPath) ? ctx.git : new GitRepo(site);
     try {
-      current = await executeRestackStep({ git: ctx.git, state: current, step: live });
+      current = await executeRestackStep({
+        git: ctx.git,
+        state: current,
+        step: live,
+        rebaseGit,
+      });
     } catch (error) {
       if (error instanceof RestackConflictError) {
         await ctx.stateStore.writeRestackPlan(markStep(plan, step.branch, "conflict"));
         const scope = conflictScope(current, plan, step.branch);
-        throw new RestackConflictError(error.branch, error, scope);
+        throw new RestackConflictError(error.branch, error, {
+          ...scope,
+          worktreePath: error.worktreePath,
+        });
       }
       throw error;
     }

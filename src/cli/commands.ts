@@ -138,7 +138,7 @@ export const COMMAND_SPECS: CommandSpec[] = [
     summary: "Rebase stack branches onto updated parents",
     usage: ["ado-stack restack [--continue | --abort]"],
     detail:
-      "Rebase each stack branch onto its live parent. After a squash merge, retarget the next active pull request. Stops on conflicts and leaves Git rebase state in place. Branches checked out in another worktree are named and refused before any rebase or push.",
+      "Rebase each stack branch onto its live parent. After a squash merge, retarget the next active pull request. Stops on conflicts and leaves Git rebase state in place. A branch held by another worktree is rebased there when that tree is clean. Dirty or blocked worktrees are named and refused before any rebase or push.",
     flags: [
       { name: "continue", kind: "boolean" },
       { name: "abort", kind: "boolean" },
