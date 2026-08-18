@@ -34,11 +34,12 @@ jobs:
         run: |
           set -euo pipefail
           if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
-            echo "Tag ${TAG} already exists; leaving it in place."
-            exit 0
+            echo "Tag ${TAG} already exists; ensuring the release workflow is dispatched."
+          else
+            git tag "${TAG}" "${GITHUB_SHA}"
+            git push origin "refs/tags/${TAG}"
           fi
-          git tag "${TAG}" "${GITHUB_SHA}"
-          git push origin "refs/tags/${TAG}"
           # GITHUB_TOKEN tag pushes do not start other workflows. Dispatch
-          # the existing release job on the new tag so binaries still publish.
+          # the existing release job on the tag so binaries still publish.
+          # Always dispatch so a retry after a successful tag push can recover.
           gh workflow run release.yml --ref "${TAG}"

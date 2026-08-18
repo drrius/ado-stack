@@ -41,7 +41,7 @@ describe("decideTagRelease", () => {
     });
   });
 
-  test("skips a duplicate tag even when the version field changed", () => {
+  test("ensures an existing tag still emits for release dispatch retry", () => {
     expect(
       decideTagRelease({
         oldVersion: "0.2.1",
@@ -49,9 +49,10 @@ describe("decideTagRelease", () => {
         existingTags: ["v0.2.1", "v0.2.2"],
       }),
     ).toEqual({
-      kind: "skip",
-      reason: "tag-exists",
-      detail: "v0.2.2 already exists",
+      kind: "ensure",
+      tag: "v0.2.2",
+      version: "0.2.2",
+      detail: "v0.2.2 already exists; release dispatch can be retried",
     });
   });
 
@@ -76,7 +77,7 @@ describe("decideTagRelease", () => {
         newVersion: "0.2.1",
         existingTags: ["v0.2.1"],
       }),
-    ).toMatchObject({ kind: "skip", reason: "tag-exists" });
+    ).toMatchObject({ kind: "ensure", tag: "v0.2.1" });
   });
 
   test("refuses pre-release and other non X.Y.Z versions", () => {

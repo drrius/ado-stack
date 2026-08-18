@@ -9,6 +9,7 @@ const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
 export type TagDecision =
   | { kind: "skip"; reason: "unchanged" | "tag-exists" | "not-greater"; detail: string }
   | { kind: "tag"; tag: string; version: string }
+  | { kind: "ensure"; tag: string; version: string; detail: string }
   | { kind: "fail"; reason: "invalid-version"; detail: string };
 
 export function isStrictPackageVersion(version: string): boolean {
@@ -41,16 +42,21 @@ export function decideTagRelease(input: {
   }
 
   const tag = `v${newVersion}`;
-  if (existingTags.includes(tag)) {
-    return { kind: "skip", reason: "tag-exists", detail: `${tag} already exists` };
-  }
-
   const latest = latestReleaseVersion(existingTags);
-  if (latest !== undefined && compareReleaseVersions(newVersion, latest) <= 0) {
+  if (latest !== undefined && compareReleaseVersions(newVersion, latest) < 0) {
     return {
       kind: "skip",
       reason: "not-greater",
       detail: `${tag} is not greater than latest tag v${latest}`,
+    };
+  }
+
+  if (existingTags.includes(tag)) {
+    return {
+      kind: "ensure",
+      tag,
+      version: newVersion,
+      detail: `${tag} already exists; release dispatch can be retried`,
     };
   }
 
@@ -78,6 +84,8 @@ export function formatDecision(decision: TagDecision): string {
   switch (decision.kind) {
     case "tag":
       return `tag ${decision.tag}`;
+    case "ensure":
+      return `ensure ${decision.tag}`;
     case "skip":
       return `skip ${decision.reason}`;
     case "fail":
@@ -222,7 +230,7 @@ async function writeGithubOutput(decision: TagDecision): Promise<void> {
   if (file === undefined || file === "") {
     return;
   }
-  const tag = decision.kind === "tag" ? decision.tag : "";
+  const tag = decision.kind === "tag" || decision.kind === "ensure" ? decision.tag : "";
   await appendFile(file, `tag=${tag}\nreason=${formatDecision(decision)}\n`);
 }
 
@@ -257,7 +265,7 @@ async function main(argv: string[]): Promise<number> {
 
   const decision = decideTagRelease(input);
   console.log(formatDecision(decision));
-  if (decision.kind !== "tag") {
+  if (decision.kind === "skip" || decision.kind === "fail" || decision.kind === "ensure") {
     console.log(decision.detail);
   }
   await writeGithubOutput(decision);
