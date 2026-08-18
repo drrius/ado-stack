@@ -32,6 +32,20 @@ if (!triple || !(triple in TRIPLES)) {
 const bunTarget = TRIPLES[triple];
 
 const repoRoot = join(import.meta.dir, "../../..");
+// The CLI compiles from the repo root and needs the root dependencies, which a
+// fresh clone that only ran `bun install` in apps/desktop does not have yet.
+if (!(await Bun.file(join(repoRoot, "node_modules/@clack/prompts/package.json")).exists())) {
+  console.log("Installing repo-root dependencies first…");
+  const install = Bun.spawn(["bun", "install", "--frozen-lockfile"], {
+    cwd: repoRoot,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const installCode = await install.exited;
+  if (installCode !== 0) {
+    process.exit(installCode);
+  }
+}
 const outDir = join(import.meta.dir, "../src-tauri/binaries");
 await mkdir(outDir, { recursive: true });
 const suffix = triple.includes("windows") ? ".exe" : "";
