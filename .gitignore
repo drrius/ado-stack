@@ -1,5 +1,7 @@
 node_modules/
 dist/
+extensions/ado-stack/out/
+extensions/ado-stack/node_modules/
 coverage/
 .DS_Store
 *.log
