@@ -125,10 +125,14 @@ export async function planRestack(options: {
   git: GitRepo;
   state: StackState;
   pullRequests: Map<number, PullRequestSnapshot>;
+  only?: ReadonlySet<string>;
 }): Promise<RestackPlanState> {
   const steps: RestackStep[] = [];
   const parentMoving = new Set<string>();
   for (const branch of stackOrder(options.state)) {
+    if (options.only !== undefined && !options.only.has(branch)) {
+      continue;
+    }
     const record = options.state.branches[branch];
     const ownPr =
       record?.pullRequestId === undefined

@@ -63,6 +63,24 @@ describe("untrack", () => {
     }
   }, 30_000);
 
+  test("resolves short names against the configured branchPrefix", async () => {
+    const repo = await createTempRepo();
+    try {
+      await initStack(repo.dir);
+      await runCli(["config", "set", "branchPrefix", "dev/"], { cwd: repo.dir });
+      await runCli(["create", "A"], { cwd: repo.dir });
+      await writeCommit(repo.git, "a.txt", "A\n", "A");
+      expect(Object.keys((await readState(repo.dir)).branches)).toEqual(["dev/A"]);
+
+      // status displays `A`; untrack must accept the same short name.
+      const short = await runCli(["untrack", "A"], { cwd: repo.dir });
+      expect(short.exitCode).toBe(0);
+      expect(Object.keys((await readState(repo.dir)).branches)).toEqual([]);
+    } finally {
+      await repo.cleanup();
+    }
+  }, 30_000);
+
   test("refuses while a restack plan is in progress", async () => {
     const repo = await createTempRepo();
     const bare = await createTempRepo({ bare: true });

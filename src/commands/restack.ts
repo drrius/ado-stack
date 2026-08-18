@@ -2,6 +2,7 @@ import { CliError } from "../errors/cli-error.ts";
 import { GitRepo } from "../git/git.ts";
 import { sameWorktreePath } from "../git/worktree.ts";
 import { descendantsOf, stackOrder } from "../stack/graph.ts";
+import { resolveBranchArg } from "../stack/names.ts";
 import {
   type PullRequestSnapshot,
   RestackConflictError,
@@ -197,6 +198,18 @@ async function runRestackCommand(
     return;
   }
   const state = await requireState(ctx);
+  // The scope is derived before any network work so reconciliation, snapshot
+  // loading, and planning never touch (or trip over) branches outside it.
+  const scope =
+    typeof flags.stack === "string"
+      ? stackScope(
+          state,
+          resolveBranchArg(flags.stack, {
+            prefix: ctx.config.branchPrefix,
+            known: Object.keys(state.branches),
+          }),
+        )
+      : undefined;
   await ctx.git.requireCleanTrackedTree("restack");
   if (await ctx.git.rebaseInProgress()) {
     throw new CliError(
@@ -204,13 +217,9 @@ async function runRestackCommand(
     );
   }
   await ctx.git.fetch(state.remoteName);
-  const reconciled = await reconcileCompletedMerges(ctx, state);
-  const pullRequests = await loadSnapshots(ctx, reconciled);
-  let plan = await planRestack({ git: ctx.git, state: reconciled, pullRequests });
-  if (typeof flags.stack === "string") {
-    const scope = stackScope(reconciled, flags.stack);
-    plan = { ...plan, steps: plan.steps.filter((step) => scope.has(step.branch)) };
-  }
+  const reconciled = await reconcileCompletedMerges(ctx, state, { only: scope });
+  const pullRequests = await loadSnapshots(ctx, reconciled, scope);
+  const plan = await planRestack({ git: ctx.git, state: reconciled, pullRequests, only: scope });
   if (plan.steps.length === 0) {
     reporter.upToDate();
     return;
@@ -475,8 +484,9 @@ async function retargetIfNeeded(
 async function loadSnapshots(
   ctx: AppContext,
   state: StackState,
+  only?: ReadonlySet<string>,
 ): Promise<Map<number, PullRequestSnapshot>> {
-  const branches = stackOrder(state);
+  const branches = stackOrder(state).filter((branch) => only === undefined || only.has(branch));
   const pullRequestIds = branches.flatMap((branch) => {
     const id = state.branches[branch]?.pullRequestId;
     return id === undefined ? [] : [id];
@@ -492,5 +502,5 @@ async function loadSnapshots(
       "Azure DevOps authentication is required to restack safely after merges.\n\nRun `ado-stack auth login`, then retry `ado-stack restack`.",
     );
   }
-  return requireCompleteSnapshots(await loadTrackedSnapshots(access.client, state));
+  return requireCompleteSnapshots(await loadTrackedSnapshots(access.client, state, only));
 }

@@ -119,7 +119,7 @@ A conflict leaves `git rebase` in progress and writes `.git/ado-stack/restack-in
 
 ## Scoped restack
 
-`ado-stack restack --stack <branch>` limits the run to the tree containing `<branch>`: its root (the tracked ancestor whose parent is trunk) and every descendant. Other roots keep their pending work and are reported as up to date only within the scoped plan. `--stack` cannot be combined with `--continue`, `--abort`, or `--status` — those operate on the plan already in progress, which keeps its original scope.
+`ado-stack restack --stack <branch>` limits the run to the tree containing `<branch>`: its root (the tracked ancestor whose parent is trunk) and every descendant. The branch argument accepts the short name shown by `status` when a `branchPrefix` is configured. The scope applies to the whole run — completed-merge reconciliation, pull request snapshot loading, and planning are all restricted to the tree — so branches outside it are never rebased, retargeted, absorbed, or even loaded, and a broken sibling cannot abort the scoped run. `--stack` cannot be combined with `--continue`, `--abort`, or `--status` — those operate on the plan already in progress, which keeps its original scope.
 
 ## Machine-readable restack
 

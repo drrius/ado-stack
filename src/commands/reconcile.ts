@@ -24,7 +24,7 @@ export type IncompleteSnapshots = "fail" | "skip";
 export async function reconcileCompletedMerges(
   ctx: AppContext,
   state: StackState,
-  options: { incompleteSnapshots?: IncompleteSnapshots } = {},
+  options: { incompleteSnapshots?: IncompleteSnapshots; only?: ReadonlySet<string> } = {},
 ): Promise<StackState> {
   if (await ctx.stateStore.readRestackPlan()) {
     ctx.log.info("Skipped merge reconcile because a restack is in progress.");
@@ -35,7 +35,9 @@ export async function reconcileCompletedMerges(
     ctx.log.info(`Skipped merge reconcile: ${access.message}`);
     return state;
   }
-  const loaded = await loadTrackedSnapshots(access.client, state);
+  // With `only`, snapshots outside the scope are not loaded, so completed
+  // merges outside the scope are never planned or absorbed.
+  const loaded = await loadTrackedSnapshots(access.client, state, options.only);
   if (!loaded.ok && options.incompleteSnapshots === "skip") {
     ctx.log.info(`Skipped merge reconcile: could not load PR #${loaded.pullRequestId}.`);
     return state;

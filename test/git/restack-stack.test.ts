@@ -68,6 +68,33 @@ describe("restack --stack", () => {
     }
   }, 60_000);
 
+  test("resolves short names against the configured branchPrefix", async () => {
+    const repo = await createTempRepo();
+    const bare = await createTempRepo({ bare: true });
+    try {
+      await initStack(repo.dir);
+      await runCli(["config", "set", "branchPrefix", "dev/"], { cwd: repo.dir });
+      await runCli(["create", "A"], { cwd: repo.dir });
+      await writeCommit(repo.git, "a.txt", "A\n", "A");
+      await repo.git.checkout("main");
+      await writeCommit(repo.git, "trunk.txt", "move\n", "trunk");
+      await repo.git.run(["remote", "add", "origin", bare.dir]);
+      await repo.git.push("origin", "main", { setUpstream: true });
+
+      const mainTip = await repo.git.getBranchTip("main");
+      const scoped = await runCli(["restack", "--stack", "A", "--json"], { cwd: repo.dir });
+      expect(scoped.exitCode).toBe(0);
+      expect(scoped.stdout).toContain('"branch":"dev/A"');
+      expect(await repo.git.getMergeBase("dev/A", "main")).toBe(mainTip);
+    } finally {
+      if (await repo.git.rebaseInProgress()) {
+        await repo.git.abortRebase();
+      }
+      await bare.cleanup();
+      await repo.cleanup();
+    }
+  }, 60_000);
+
   test("refuses unknown branches and in-progress flag combinations", async () => {
     const repo = await createTempRepo();
     const bare = await createTempRepo({ bare: true });

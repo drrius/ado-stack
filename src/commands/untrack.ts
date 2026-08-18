@@ -1,13 +1,18 @@
 import { CliError } from "../errors/cli-error.ts";
+import { resolveBranchArg } from "../stack/names.ts";
 import { formatBranch } from "../ui/format.ts";
 import { type AppContext, requireState } from "./context.ts";
 
 export async function untrackCommand(ctx: AppContext, args: string[]): Promise<void> {
-  const branch = args[0];
-  if (!branch) {
+  const arg = args[0];
+  if (!arg) {
     throw new CliError("Usage: ado-stack untrack <branch>");
   }
   const state = await requireState(ctx);
+  const branch = resolveBranchArg(arg, {
+    prefix: ctx.config.branchPrefix,
+    known: Object.keys(state.branches),
+  });
   if (!state.branches[branch]) {
     throw new CliError(`\`${branch}\` is not tracked.`);
   }
