@@ -41,28 +41,23 @@ export function reconstructForest(options: {
   pullRequests: ReconstructPullRequest[];
 }): ReconstructResult {
   const skipped: AdoptionSkip[] = [];
-  const propertyIds = [
-    ...new Set(
-      options.pullRequests
-        .map((pr) => pr.properties?.stackId)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  ].sort();
-  if (propertyIds.length > 1) {
-    return {
-      ok: false,
-      conflicts: [{ kind: "multiple-stack-ids", stackIds: propertyIds }],
-      skipped,
-    };
-  }
-
   const adoptable = adoptablePullRequests(
     options.base.defaultBranch,
     options.pullRequests,
     skipped,
   );
+  const propertyIds = [
+    ...new Set(
+      adoptable.map((pr) => pr.properties?.stackId).filter((id): id is string => Boolean(id)),
+    ),
+  ].sort();
+  if (propertyIds.length > 1) {
+    return fail(options.pullRequests, skipped, [
+      { kind: "multiple-stack-ids", stackIds: propertyIds },
+    ]);
+  }
   if (adoptable.length === 0) {
-    return { ok: false, conflicts: [{ kind: "empty" }], skipped };
+    return fail(options.pullRequests, skipped, [{ kind: "empty" }]);
   }
 
   const bySource = new Map<string, ReconstructPullRequest[]>();
@@ -111,7 +106,7 @@ export function reconstructForest(options: {
   }
 
   if (conflicts.length > 0) {
-    return { ok: false, conflicts, skipped };
+    return fail(options.pullRequests, skipped, conflicts);
   }
 
   const branches: Record<string, StackBranchState> = {};
@@ -154,9 +149,9 @@ export function reconstructForest(options: {
     conflicts.push({ kind: "cycle", branches: cycle });
   }
   if (conflicts.length > 0) {
-    return { ok: false, conflicts, skipped };
+    return fail(options.pullRequests, skipped, conflicts);
   }
-  accountUnadoptedActivePullRequests(options.pullRequests, next, skipped);
+  accountUnadoptedActivePullRequests(options.pullRequests, adoptedPullRequestIds(next), skipped);
   return { ok: true, state: next, skipped };
 }
 
@@ -269,16 +264,28 @@ function choosePullRequestForSource(
   return { ok: false, pullRequestIds: prs.map((pr) => pr.id) };
 }
 
-function accountUnadoptedActivePullRequests(
+function fail(
   pullRequests: ReconstructPullRequest[],
-  state: StackState,
   skipped: AdoptionSkip[],
-): void {
-  const adoptedIds = new Set(
+  conflicts: ReconstructConflict[],
+): ReconstructResult {
+  accountUnadoptedActivePullRequests(pullRequests, new Set(), skipped);
+  return { ok: false, conflicts, skipped };
+}
+
+function adoptedPullRequestIds(state: StackState): Set<number> {
+  return new Set(
     Object.values(state.branches).flatMap((branch) =>
       branch.pullRequestId === undefined ? [] : [branch.pullRequestId],
     ),
   );
+}
+
+function accountUnadoptedActivePullRequests(
+  pullRequests: ReconstructPullRequest[],
+  adoptedIds: Set<number>,
+  skipped: AdoptionSkip[],
+): void {
   const named = new Set(skipped.map((skip) => skip.pullRequestId));
   for (const pr of pullRequests) {
     if (pr.status !== "active" || adoptedIds.has(pr.id) || named.has(pr.id)) {
