@@ -310,4 +310,87 @@ describe("planCompletedMerges", () => {
     expect(next.branches[GRAND_1989]?.lastRestackBase).toBe("base-1989");
     expect(next.branches[GRAND_1990]?.lastRestackBase).toBe("base-1990");
   });
+
+  test("a completed PR retargeted away from its recorded parent absorbs into the PR target", () => {
+    const state: StackState = {
+      ...forestState(),
+      branches: {
+        base: branch("main", 10, "base-tip"),
+        [PARENT]: branch("base", 1982, "base-tip"),
+        [CHILD_1986]: branch(PARENT, 1986, "base-1986"),
+      },
+    };
+    const plan = planCompletedMerges({
+      state,
+      pullRequests: new Map([
+        [10, snapshot(10, "active", "base", "main")],
+        [1982, snapshot(1982, "completed", PARENT, "main")],
+        [1986, snapshot(1986, "active", CHILD_1986, PARENT)],
+      ]),
+      facts: facts({ contained: [[PARENT, "main"]] }),
+    });
+    expect(plan.refusals).toEqual([]);
+    expect(plan.absorptions).toHaveLength(1);
+    expect(plan.absorptions[0]?.into).toBe("main");
+    expect(plan.absorptions[0]?.children.map((child) => child.branch)).toEqual([CHILD_1986]);
+    const next = applyAbsorption(state, plan.absorptions[0]!);
+    expect(next.branches[PARENT]).toBeUndefined();
+    expect(next.branches[CHILD_1986]?.parent).toBe("main");
+    expect(next.branches.base?.parent).toBe("main");
+  });
+
+  test("living base walks completed PR targets, not stale local parents", () => {
+    const state: StackState = {
+      ...forestState(),
+      branches: {
+        base: branch("main", 10, "base-tip"),
+        A: branch("base", 1, "a-base"),
+        B: branch("A", 2, "b-base"),
+        C: branch("B", 3, "c-base"),
+      },
+    };
+    const plan = planCompletedMerges({
+      state,
+      pullRequests: new Map([
+        [10, snapshot(10, "active", "base", "main")],
+        [1, snapshot(1, "completed", "A", "main")],
+        [2, snapshot(2, "completed", "B", "A")],
+        [3, snapshot(3, "active", "C", "B")],
+      ]),
+      facts: facts({
+        contained: [
+          ["A", "main"],
+          ["B", "main"],
+        ],
+      }),
+    });
+    expect(plan.refusals).toEqual([]);
+    expect(plan.absorptions.map((item) => ({ branch: item.branch, into: item.into }))).toEqual([
+      { branch: "A", into: "main" },
+      { branch: "B", into: "main" },
+    ]);
+    const next = applyAll(state, plan);
+    expect(next.branches.C?.parent).toBe("main");
+  });
+
+  test("a source mismatch is a refusal, not an absorption", () => {
+    const state = forestState();
+    const pullRequests = forestSnapshots();
+    pullRequests.set(1982, snapshot(1982, "completed", "someone-else", "main"));
+    const plan = planCompletedMerges({
+      state,
+      pullRequests,
+      facts: facts({ contained: [[PARENT, "main"]] }),
+    });
+    expect(plan.absorptions).toEqual([]);
+    expect(plan.refusals).toEqual([
+      {
+        branch: PARENT,
+        pullRequestId: 1982,
+        reason: "source-mismatch",
+        sourceBranch: "someone-else",
+      },
+    ]);
+    expect(applyAll(state, plan).branches[PARENT]?.parent).toBe("main");
+  });
 });

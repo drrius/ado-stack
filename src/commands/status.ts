@@ -57,7 +57,7 @@ export async function loadStackStatus(ctx: AppContext): Promise<StackStatus> {
       `Could not fetch ${state.remoteName}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  state = await reconcileCompletedMerges(ctx, state);
+  state = await reconcileCompletedMerges(ctx, state, { incompleteSnapshots: "skip" });
   const order = stackOrder(state);
   if (access.status === "ready") {
     for (const branch of order) {

@@ -269,6 +269,143 @@ describe("reconcile completed merges", () => {
     }
   }, 30_000);
 
+  test("init leaves state unchanged when reconstruct refuses", async () => {
+    const repo = await createTempRepo();
+    const fake = new FakeAzureDevOps({
+      organization: "example",
+      project: "Platform",
+      repository: "app",
+      token: "test-pat",
+    });
+    try {
+      const origin = await fake.listen();
+      const bare = await createTempRepo({ bare: true });
+      await initWithOrigin(repo, origin, bare.dir);
+      await grow(repo, "main", PARENT, "parent.ts", "parent change");
+      await grow(repo, PARENT, CHILD_1986, "child-1986.ts", "child 1986");
+      const submitted = await runCli(["submit"], { cwd: repo.dir, env });
+      expect(submitted.exitCode).toBe(0);
+      const parentPr = prBySource(fake, PARENT);
+      const child1986 = prBySource(fake, CHILD_1986);
+      parentPr.status = "completed";
+      child1986.targetRefName = "refs/heads/elsewhere";
+      const before = await readState(repo.dir);
+
+      const initialized = await runCli(
+        [
+          "init",
+          "--organization",
+          origin,
+          "--project",
+          "Platform",
+          "--repository",
+          "app",
+          "--default-branch",
+          "main",
+        ],
+        { cwd: repo.dir, env },
+      );
+      expect(initialized.exitCode).toBe(0);
+      const output = `${initialized.stdout}\n${initialized.stderr}`;
+      expect(output).toMatch(/disagreeing parents/i);
+      expect(output).not.toContain("Merged PR");
+      expect(output).not.toContain("Reparented");
+      expect(output).not.toContain("Retargeted");
+      expect(child1986.targetRefName).toBe("refs/heads/elsewhere");
+      const after = await readState(repo.dir);
+      expect(after.branches[PARENT]?.pullRequestId).toBe(parentPr.pullRequestId);
+      expect(after.branches[CHILD_1986]?.parent).toBe(PARENT);
+      expect(after.branches[PARENT]?.lastLocalTip).toBe(before.branches[PARENT]?.lastLocalTip);
+      await bare.cleanup();
+    } finally {
+      fake.stop();
+      await repo.cleanup();
+    }
+  }, 30_000);
+
+  test("status skips reconcile and still prints rows when a tracked PR cannot be loaded", async () => {
+    const repo = await createTempRepo();
+    const fake = new FakeAzureDevOps({
+      organization: "example",
+      project: "Platform",
+      repository: "app",
+      token: "test-pat",
+    });
+    try {
+      const origin = await fake.listen();
+      const bare = await createTempRepo({ bare: true });
+      await initWithOrigin(repo, origin, bare.dir);
+      await grow(repo, "main", PARENT, "parent.ts", "parent change");
+      await grow(repo, PARENT, CHILD_1986, "child-1986.ts", "child 1986");
+      const submitted = await runCli(["submit"], { cwd: repo.dir, env });
+      expect(submitted.exitCode).toBe(0);
+      const parentPr = prBySource(fake, PARENT);
+      const child1986 = prBySource(fake, CHILD_1986);
+      parentPr.status = "completed";
+      fake.pullRequests.delete(child1986.pullRequestId);
+
+      const status = await runCli(["status"], { cwd: repo.dir, env });
+      expect(status.exitCode).toBe(0);
+      expect(status.stdout).toContain(
+        `Skipped merge reconcile: could not load PR #${child1986.pullRequestId}.`,
+      );
+      expect(status.stdout).not.toContain("Merged PR");
+      expect(status.stdout).toContain(`#${parentPr.pullRequestId}`);
+      const after = await readState(repo.dir);
+      expect(after.branches[PARENT]?.pullRequestId).toBe(parentPr.pullRequestId);
+      expect(after.branches[CHILD_1986]?.parent).toBe(PARENT);
+      await bare.cleanup();
+    } finally {
+      fake.stop();
+      await repo.cleanup();
+    }
+  }, 30_000);
+
+  test("status absorbs into the completed PR target when the local parent is stale", async () => {
+    const repo = await createTempRepo();
+    const fake = new FakeAzureDevOps({
+      organization: "example",
+      project: "Platform",
+      repository: "app",
+      token: "test-pat",
+    });
+    try {
+      const origin = await fake.listen();
+      const bare = await createTempRepo({ bare: true });
+      await initWithOrigin(repo, origin, bare.dir);
+      await grow(repo, "main", "base", "base.ts", "base change");
+      await grow(repo, "base", PARENT, "parent.ts", "parent change");
+      await grow(repo, PARENT, CHILD_1986, "child-1986.ts", "child 1986");
+      const submitted = await runCli(["submit"], { cwd: repo.dir, env });
+      expect(submitted.exitCode).toBe(0);
+      const parentPr = prBySource(fake, PARENT);
+      const child1986 = prBySource(fake, CHILD_1986);
+      parentPr.status = "completed";
+      parentPr.targetRefName = "refs/heads/main";
+
+      const status = await runCli(["status"], { cwd: repo.dir, env });
+      expect(status.exitCode).toBe(0);
+      expect(status.stdout).toContain(
+        `Merged PR #${parentPr.pullRequestId} \`${PARENT}\` into \`main\``,
+      );
+      expect(status.stdout).toContain(
+        `Reparented PR #${child1986.pullRequestId} \`${CHILD_1986}\` → \`main\``,
+      );
+      expect(status.stdout).toContain(
+        `Retargeted PR #${child1986.pullRequestId} \`${CHILD_1986}\` → \`main\``,
+      );
+      const after = await readState(repo.dir);
+      expect(after.branches[PARENT]).toBeUndefined();
+      expect(after.branches[CHILD_1986]?.parent).toBe("main");
+      expect(after.branches.base?.parent).toBe("main");
+      expect(child1986.targetRefName).toBe("refs/heads/main");
+      await bare.cleanup();
+    } finally {
+      fake.stop();
+      await repo.cleanup();
+    }
+  }, 30_000);
+
   test("unauthenticated status prints that merge reconcile was skipped", async () => {
     const repo = await createTempRepo();
     try {

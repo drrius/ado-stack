@@ -11,10 +11,14 @@ import type { PullRequestSnapshot } from "../stack/restack.ts";
 import type { StackState } from "../state/schema.ts";
 import { fromRefsHeads, refsHeads } from "./context.ts";
 
+export type SnapshotLoad =
+  | { ok: true; snapshots: Map<number, PullRequestSnapshot> }
+  | { ok: false; pullRequestId: number; error: unknown };
+
 export async function loadTrackedSnapshots(
   ado: AdoClient,
   state: StackState,
-): Promise<Map<number, PullRequestSnapshot>> {
+): Promise<SnapshotLoad> {
   const snapshots = new Map<number, PullRequestSnapshot>();
   for (const branch of stackOrder(state)) {
     const id = state.branches[branch]?.pullRequestId;
@@ -30,13 +34,20 @@ export async function loadTrackedSnapshots(
         targetBranch: fromRefsHeads(pr.targetRefName),
       });
     } catch (error) {
-      throw new CliError(
-        `Could not load PR #${id} from Azure DevOps.\n\nComplete pull request state is required to handle merged parents safely.`,
-        { cause: error },
-      );
+      return { ok: false, pullRequestId: id, error };
     }
   }
-  return snapshots;
+  return { ok: true, snapshots };
+}
+
+export function requireCompleteSnapshots(load: SnapshotLoad): Map<number, PullRequestSnapshot> {
+  if (load.ok) {
+    return load.snapshots;
+  }
+  throw new CliError(
+    `Could not load PR #${load.pullRequestId} from Azure DevOps.\n\nComplete pull request state is required to handle merged parents safely.`,
+    { cause: load.error },
+  );
 }
 
 export async function retargetStackPullRequest(options: {
