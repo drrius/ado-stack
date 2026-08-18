@@ -44,9 +44,9 @@ download_failed() {
 download_with_gh() {
   name=$1
   if [ "${VERSION}" = "latest" ]; then
-    gh release download --repo "${REPO}" --pattern "${name}" --dir "${tmpdir}"
+    gh release download --repo "${REPO}" --pattern "${name}" --dir "${tmpdir}" --clobber
   else
-    gh release download "${VERSION}" --repo "${REPO}" --pattern "${name}" --dir "${tmpdir}"
+    gh release download "${VERSION}" --repo "${REPO}" --pattern "${name}" --dir "${tmpdir}" --clobber
   fi
 }
 
@@ -59,9 +59,11 @@ download() {
     if curl -fsSL "${url}" -o "${dest}"; then
       return
     fi
+    rm -f "${dest}"
   fi
 
   if command -v gh >/dev/null 2>&1; then
+    rm -f "${tmpdir}/${name}"
     if download_with_gh "${name}"; then
       return
     fi

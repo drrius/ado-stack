@@ -14,6 +14,54 @@ function Write-ReleaseMissing {
   Write-Error "No GitHub Release found for $Repo ($Version). Publish a v* tag (git tag vX.Y.Z && git push origin vX.Y.Z). If the repository is private, run gh auth login and retry."
 }
 
+function Remove-PartialDownload {
+  param([string]$Path)
+  if (Test-Path $Path) {
+    Remove-Item -Force $Path
+  }
+}
+
+function Download-WithGh {
+  param([string]$Pattern)
+  if ($Version -eq "latest") {
+    & gh release download --repo $Repo --pattern $Pattern --dir $Tmp --clobber
+  } else {
+    & gh release download $Version --repo $Repo --pattern $Pattern --dir $Tmp --clobber
+  }
+  return $LASTEXITCODE -eq 0
+}
+
+function Download-File {
+  param(
+    [string]$Url,
+    [string]$Dest,
+    [string]$Pattern
+  )
+
+  if (Get-Command curl -ErrorAction SilentlyContinue) {
+    & curl -fsSL $Url -o $Dest
+    if ($LASTEXITCODE -eq 0) {
+      return $true
+    }
+    Remove-PartialDownload $Dest
+  } else {
+    try {
+      Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing
+      return $true
+    } catch {
+      Remove-PartialDownload $Dest
+    }
+  }
+
+  $gh = Get-Command gh -ErrorAction SilentlyContinue
+  if (-not $gh) {
+    return $false
+  }
+
+  Remove-PartialDownload $Dest
+  return Download-WithGh $Pattern
+}
+
 try {
   if ($Version -eq "latest") {
     $Base = "https://github.com/$Repo/releases/latest/download"
@@ -23,35 +71,12 @@ try {
 
   $AssetPath = Join-Path $Tmp $Asset
   $SumPath = Join-Path $Tmp "SHA256SUMS"
-  $gh = Get-Command gh -ErrorAction SilentlyContinue
-  $downloaded = $false
 
-  try {
-    Invoke-WebRequest -Uri "$Base/$Asset" -OutFile $AssetPath -UseBasicParsing
-    Invoke-WebRequest -Uri "$Base/SHA256SUMS" -OutFile $SumPath -UseBasicParsing
-    $downloaded = $true
-  } catch {
-    if ($gh) {
-      try {
-        if ($Version -eq "latest") {
-          & gh release download --repo $Repo --pattern $Asset --dir $Tmp
-          if ($LASTEXITCODE -ne 0) { throw "gh release download failed" }
-          & gh release download --repo $Repo --pattern SHA256SUMS --dir $Tmp
-        } else {
-          & gh release download $Version --repo $Repo --pattern $Asset --dir $Tmp
-          if ($LASTEXITCODE -ne 0) { throw "gh release download failed" }
-          & gh release download $Version --repo $Repo --pattern SHA256SUMS --dir $Tmp
-        }
-        if ($LASTEXITCODE -eq 0) {
-          $downloaded = $true
-        }
-      } catch {
-        $downloaded = $false
-      }
-    }
+  if (-not (Download-File "$Base/$Asset" $AssetPath $Asset)) {
+    Write-ReleaseMissing
+    throw
   }
-
-  if (-not $downloaded) {
+  if (-not (Download-File "$Base/SHA256SUMS" $SumPath "SHA256SUMS")) {
     Write-ReleaseMissing
     throw
   }
