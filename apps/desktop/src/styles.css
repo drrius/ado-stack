@@ -322,6 +322,19 @@ input:focus {
   color: var(--muted);
 }
 
+.standalone {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+.standalone summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 4px 8px;
+}
+
 .manual ol {
   margin: 8px 0;
 }

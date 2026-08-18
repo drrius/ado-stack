@@ -226,6 +226,14 @@ export default function App() {
     await refresh();
   }, [streamRestack, refresh]);
 
+  const restackStack = useCallback(
+    async (branch: string) => {
+      await streamRestack(["restack", "--stack", branch, "--json"]);
+      await refresh();
+    },
+    [streamRestack, refresh],
+  );
+
   const submit = useCallback(async () => {
     await streamAdoStack("submit", ["submit"]);
     await refresh();
@@ -600,7 +608,11 @@ export default function App() {
                   {busy === "restack" ? "Restacking…" : "Restack"}
                 </button>
               </section>
-              <StackTree status={status} />
+              <StackTree
+                status={status}
+                disabled={busy !== null}
+                onRestackStack={(branch) => void restackStack(branch)}
+              />
             </>
           )}
           <LogPane lines={log} />
