@@ -38,8 +38,9 @@ function Download-File {
     [string]$Pattern
   )
 
-  if (Get-Command curl -ErrorAction SilentlyContinue) {
-    & curl -fsSL $Url -o $Dest
+  $curlExe = Get-Command curl.exe -ErrorAction SilentlyContinue
+  if ($curlExe) {
+    & $curlExe.Source -fsSL $Url -o $Dest
     if ($LASTEXITCODE -eq 0) {
       return $true
     }
