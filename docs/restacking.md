@@ -102,8 +102,9 @@ Before `rebase --onto`:
 - `oldBase` is an ancestor of the branch
 - the unique commit list is non-empty
 - the remote tip equals `lastKnownRemoteTip` (no unknown remote commits)
+- a branch with no pull request and no `lastSubmittedTip` is rebased locally and not pushed
 
-A conflict leaves `git rebase` in progress and writes `.git/ado-stack/restack-in-progress.json`. Resolve, `git rebase --continue`, then `ado-stack restack --continue`. `ado-stack restack --abort` aborts the Git rebase and clears the plan. Branches already force-pushed with lease are not rolled back.
+A conflict leaves `git rebase` in progress and writes `.git/ado-stack/restack-in-progress.json`. Resolve, `git rebase --continue`, then `ado-stack restack --continue`. `ado-stack restack --abort` aborts the Git rebase and clears the plan. Submitted branches already force-pushed with lease are not rolled back.
 
 ## Divergence
 

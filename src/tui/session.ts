@@ -19,7 +19,7 @@ import { submitCommand } from "../commands/submit.ts";
 import { formatError } from "../errors/cli-error.ts";
 import { stackOrder } from "../stack/graph.ts";
 import { applyBranchPrefix, validateBranchName } from "../stack/names.ts";
-import { RestackConflictError } from "../stack/restack.ts";
+import { RestackConflictError, branchWasSubmitted } from "../stack/restack.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import { createLogger } from "../ui/log.ts";
 import { redactText } from "../ui/redact.ts";
@@ -552,8 +552,15 @@ async function flowRestack(session: Session): Promise<void> {
     return `${formatBranch(step.branch, prefix)} → rebase onto ${formatBranch(step.onto, prefix)}${retarget}`;
   });
   note(lines.join("\n"), "Restack plan", { ...io });
+  const state = await requireState(ctx);
+  const willPush = plan.steps.some((step) => {
+    const record = state.branches[step.branch];
+    return record !== undefined && branchWasSubmitted(record);
+  });
   const ok = await confirm({
-    message: `Rebase ${plan.steps.length} ${plural(plan.steps.length, "branch", "branches")} and push with --force-with-lease?`,
+    message: willPush
+      ? `Rebase ${plan.steps.length} ${plural(plan.steps.length, "branch", "branches")} and update remotes of submitted branches?`
+      : `Rebase ${plan.steps.length} ${plural(plan.steps.length, "branch", "branches")} locally?`,
     ...io,
   });
   if (isCancel(ok) || !ok) {
