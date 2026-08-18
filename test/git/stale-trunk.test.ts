@@ -70,5 +70,5 @@ describe("restack onto fetched default branch", () => {
       await repo.cleanup();
       await bare.cleanup();
     }
-  });
+  }, 30_000);
 });

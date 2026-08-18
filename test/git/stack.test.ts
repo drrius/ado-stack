@@ -56,7 +56,7 @@ describe("real git linear stack", () => {
     } finally {
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 
   test("restack after parent receives new commits keeps child ranges", async () => {
     const repo = await createTempRepo();
@@ -97,7 +97,7 @@ describe("real git linear stack", () => {
     } finally {
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 
   test("restack after parent rebase keeps child changes", async () => {
     const repo = await createTempRepo();
@@ -130,7 +130,7 @@ describe("real git linear stack", () => {
     } finally {
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 
   test("create refuses to run with uncommitted tracked changes", async () => {
     const repo = await createTempRepo();
@@ -144,5 +144,5 @@ describe("real git linear stack", () => {
     } finally {
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 });

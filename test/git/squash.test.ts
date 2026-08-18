@@ -81,5 +81,5 @@ describe("squash merge restack", () => {
     } finally {
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 });

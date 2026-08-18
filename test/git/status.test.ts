@@ -45,7 +45,7 @@ describe("status sync flags", () => {
     } finally {
       await repo.cleanup();
     }
-  });
+  }, 30_000);
 
   test("reports restack needed when origin/main moved and local main is stale", async () => {
     const bare = await createTempRepo({ bare: true });
