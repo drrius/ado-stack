@@ -10,6 +10,7 @@ export type CommandName =
   | "auth"
   | "config"
   | "repair"
+  | "untrack"
   | "update"
   | "help"
   | "version";
@@ -154,10 +155,11 @@ export const COMMAND_SPECS: CommandSpec[] = [
     name: "restack",
     group: "recovery",
     summary: "Rebase stack branches onto updated parents and update submitted remotes",
-    usage: ["ado-stack restack [--continue | --abort | --status] [--json]"],
+    usage: ["ado-stack restack [--stack <branch>] [--continue | --abort | --status] [--json]"],
     detail:
-      "Repair completed pull requests first, then rebase each remaining stack branch onto its live parent and update its remote. Branches that were never submitted are rebased locally only. A completed parent re-parents every child and retargets those pull requests before any rebase. Stops on conflicts and leaves Git rebase state in place. A branch held by another worktree is rebased there when that tree is clean. Dirty worktrees are named and refused before any rebase or push. --json streams machine-readable events on stdout, one JSON object per line (plan, step-start, step-done, conflict with worktree path and conflicted files, done, aborted, error); human messages move to stderr. --status reads the persisted restack plan and live rebase state without changing anything, as text or with --json as one JSON object.",
+      "Repair completed pull requests first, then rebase each remaining stack branch onto its live parent and update its remote. Branches that were never submitted are rebased locally only. A completed parent re-parents every child and retargets those pull requests before any rebase. Stops on conflicts and leaves Git rebase state in place. A branch held by another worktree is rebased there when that tree is clean. Dirty worktrees are named and refused before any rebase or push. --stack <branch> limits the run to the tree containing <branch> — its root and every descendant — leaving other roots alone. --json streams machine-readable events on stdout, one JSON object per line (plan, step-start, step-done, conflict with worktree path and conflicted files, done, aborted, error); human messages move to stderr. --status reads the persisted restack plan and live rebase state without changing anything, as text or with --json as one JSON object.",
     flags: [
+      { name: "stack", kind: "string", valueName: "branch" },
       { name: "continue", kind: "boolean" },
       { name: "abort", kind: "boolean" },
       { name: "status", kind: "boolean" },
@@ -172,6 +174,16 @@ export const COMMAND_SPECS: CommandSpec[] = [
     usage: ["ado-stack repair"],
     detail:
       "Rebuild local state when Git, Azure DevOps pull request targets, and recorded parents agree. A parent with several children is recorded. Cycles, missing parents, and parent disagreements are named and refused, not guessed.",
+    flags: [{ name: "help", kind: "boolean" }],
+  },
+  {
+    name: "untrack",
+    group: "recovery",
+    summary: "Stop managing a branch without touching Git or its pull request",
+    usage: ["ado-stack untrack <branch>"],
+    detail:
+      "Remove one branch from local stack state. The local branch, the remote branch, and any pull request are left exactly as they are; ado-stack simply stops managing the branch. A branch with tracked children is refused so a stack is never silently broken, and nothing is untracked while a restack plan is in progress.",
+    positionals: [{ name: "branch", required: true }],
     flags: [{ name: "help", kind: "boolean" }],
   },
 ];

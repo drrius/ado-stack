@@ -42,7 +42,18 @@ function preflightBadge(node: StatusJsonNode): JSX.Element | null {
   );
 }
 
-function Node({ node, depth }: { node: StatusJsonNode; depth: number }): JSX.Element {
+function subtreeNeedsRestack(node: StatusJsonNode): boolean {
+  return node.needsRestack || node.children.some(subtreeNeedsRestack);
+}
+
+type NodeProps = {
+  node: StatusJsonNode;
+  depth: number;
+  onRestackStack?: (branch: string) => void;
+  disabled?: boolean;
+};
+
+function Node({ node, depth, onRestackStack, disabled }: NodeProps): JSX.Element {
   return (
     <>
       <div className={`tree-row${node.current ? " current" : ""}`}>
@@ -62,6 +73,17 @@ function Node({ node, depth }: { node: StatusJsonNode; depth: number }): JSX.Ele
             {node.behind > 0 ? `↓${node.behind}` : ""}
           </span>
         )}
+        {depth === 0 && onRestackStack && subtreeNeedsRestack(node) && (
+          <button
+            type="button"
+            className="link"
+            disabled={disabled}
+            title={`ado-stack restack --stack ${node.branch} — restacks only this tree`}
+            onClick={() => onRestackStack(node.branch)}
+          >
+            restack ⟳
+          </button>
+        )}
         <span className="grow" />
         {node.title && <span className="pr-title">{node.title}</span>}
         {node.url && (
@@ -79,13 +101,29 @@ function Node({ node, depth }: { node: StatusJsonNode; depth: number }): JSX.Ele
         )}
       </div>
       {node.children.map((child) => (
-        <Node key={child.branch} node={child} depth={depth + 1} />
+        <Node
+          key={child.branch}
+          node={child}
+          depth={depth + 1}
+          onRestackStack={onRestackStack}
+          disabled={disabled}
+        />
       ))}
     </>
   );
 }
 
-export function StackTree({ status }: { status: StatusJson }): JSX.Element {
+type StackTreeProps = {
+  status: StatusJson;
+  onRestackStack?: (branch: string) => void;
+  disabled?: boolean;
+};
+
+export function StackTree({ status, onRestackStack, disabled }: StackTreeProps): JSX.Element {
+  // Real stacks first; single tracked branches (trees of height 1) are moved
+  // into a collapsed group so they do not drown out the stacked work.
+  const stacks = status.forest.filter((node) => node.children.length > 0);
+  const standalone = status.forest.filter((node) => node.children.length === 0);
   return (
     <section className="card tree">
       <div className="tree-row trunk">
@@ -97,9 +135,31 @@ export function StackTree({ status }: { status: StatusJson }): JSX.Element {
       {status.forest.length === 0 && (
         <div className="tree-row muted-text">No stack branches yet. Create one to get started.</div>
       )}
-      {status.forest.map((node) => (
-        <Node key={node.branch} node={node} depth={0} />
+      {stacks.map((node) => (
+        <Node
+          key={node.branch}
+          node={node}
+          depth={0}
+          onRestackStack={onRestackStack}
+          disabled={disabled}
+        />
       ))}
+      {standalone.length > 0 && (
+        <details className="standalone" open={stacks.length === 0}>
+          <summary>
+            Standalone branches ({standalone.length}) — tracked, but nothing is stacked on them
+          </summary>
+          {standalone.map((node) => (
+            <Node
+              key={node.branch}
+              node={node}
+              depth={0}
+              onRestackStack={onRestackStack}
+              disabled={disabled}
+            />
+          ))}
+        </details>
+      )}
     </section>
   );
 }

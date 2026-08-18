@@ -8,6 +8,7 @@ import { repairCommand } from "../commands/repair.ts";
 import { restackCommand } from "../commands/restack.ts";
 import { statusCommand } from "../commands/status.ts";
 import { submitCommand } from "../commands/submit.ts";
+import { untrackCommand } from "../commands/untrack.ts";
 import { updateCommand } from "../commands/update.ts";
 import { CliError, formatError, isCliError } from "../errors/cli-error.ts";
 import { shouldLaunchTui } from "../tui/mode.ts";
@@ -110,6 +111,9 @@ async function dispatch(
       return configCommand(ctx, args, flags);
     case "repair":
       await repairCommand(ctx);
+      return;
+    case "untrack":
+      await untrackCommand(ctx, args);
       return;
     case "update":
       await updateCommand(ctx);

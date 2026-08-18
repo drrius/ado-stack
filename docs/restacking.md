@@ -117,6 +117,10 @@ After a successful restack the invoking worktree is left on the branch it starte
 
 A conflict leaves `git rebase` in progress and writes `.git/ado-stack/restack-in-progress.json`. Resolve, `git rebase --continue`, then `ado-stack restack --continue`. `ado-stack restack --abort` aborts the Git rebase and clears the plan. Submitted branches already force-pushed with lease are not rolled back.
 
+## Scoped restack
+
+`ado-stack restack --stack <branch>` limits the run to the tree containing `<branch>`: its root (the tracked ancestor whose parent is trunk) and every descendant. The branch argument accepts the short name shown by `status` when a `branchPrefix` is configured. The scope applies to the whole run — completed-merge reconciliation, pull request snapshot loading, and planning are all restricted to the tree — so branches outside it are never rebased, retargeted, absorbed, or even loaded, and a broken sibling cannot abort the scoped run. `--stack` cannot be combined with `--continue`, `--abort`, or `--status` — those operate on the plan already in progress, which keeps its original scope.
+
 ## Machine-readable restack
 
 `ado-stack restack --json` prints one JSON object per line on stdout while human messages go to stderr. Events: `plan` (the ordered steps), `step-start`, `step-done`, `conflict` (branch, the worktree path holding the rebase, conflicted files, blocked subtree, untouched siblings), `done`, `aborted`, and `error`. The same flag works with `--continue` and `--abort`. Exit codes are unchanged — a conflict still exits non-zero after emitting the `conflict` event.

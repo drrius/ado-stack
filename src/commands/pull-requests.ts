@@ -18,9 +18,13 @@ export type SnapshotLoad =
 export async function loadTrackedSnapshots(
   ado: AdoClient,
   state: StackState,
+  only?: ReadonlySet<string>,
 ): Promise<SnapshotLoad> {
   const snapshots = new Map<number, PullRequestSnapshot>();
   for (const branch of stackOrder(state)) {
+    if (only !== undefined && !only.has(branch)) {
+      continue;
+    }
     const id = state.branches[branch]?.pullRequestId;
     if (id === undefined) {
       continue;

@@ -1,7 +1,8 @@
 import { CliError } from "../errors/cli-error.ts";
 import { GitRepo } from "../git/git.ts";
 import { sameWorktreePath } from "../git/worktree.ts";
-import { stackOrder } from "../stack/graph.ts";
+import { descendantsOf, stackOrder } from "../stack/graph.ts";
+import { resolveBranchArg } from "../stack/names.ts";
 import {
   type PullRequestSnapshot,
   RestackConflictError,
@@ -46,6 +47,14 @@ export async function restackCommand(
   flags: Record<string, string | boolean>,
 ): Promise<void> {
   const json = flags.json === true;
+  if (
+    typeof flags.stack === "string" &&
+    (flags.continue === true || flags.abort === true || flags.status === true)
+  ) {
+    throw new CliError(
+      "--stack cannot be combined with --continue, --abort, or --status.\n\nThose operate on the plan that is already in progress.",
+    );
+  }
   if (flags.status === true) {
     if (flags.abort === true || flags.continue === true) {
       throw new CliError("Use --status alone. It only reads state.");
@@ -189,6 +198,18 @@ async function runRestackCommand(
     return;
   }
   const state = await requireState(ctx);
+  // The scope is derived before any network work so reconciliation, snapshot
+  // loading, and planning never touch (or trip over) branches outside it.
+  const scope =
+    typeof flags.stack === "string"
+      ? stackScope(
+          state,
+          resolveBranchArg(flags.stack, {
+            prefix: ctx.config.branchPrefix,
+            known: Object.keys(state.branches),
+          }),
+        )
+      : undefined;
   await ctx.git.requireCleanTrackedTree("restack");
   if (await ctx.git.rebaseInProgress()) {
     throw new CliError(
@@ -196,9 +217,9 @@ async function runRestackCommand(
     );
   }
   await ctx.git.fetch(state.remoteName);
-  const reconciled = await reconcileCompletedMerges(ctx, state);
-  const pullRequests = await loadSnapshots(ctx, reconciled);
-  const plan = await planRestack({ git: ctx.git, state: reconciled, pullRequests });
+  const reconciled = await reconcileCompletedMerges(ctx, state, { only: scope });
+  const pullRequests = await loadSnapshots(ctx, reconciled, scope);
+  const plan = await planRestack({ git: ctx.git, state: reconciled, pullRequests, only: scope });
   if (plan.steps.length === 0) {
     reporter.upToDate();
     return;
@@ -210,6 +231,32 @@ async function runRestackCommand(
   );
   await ctx.stateStore.writeRestackPlan(plan);
   await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, reconciled, plan, reporter));
+}
+
+/**
+ * The tree containing `branch`: walk up to the root whose parent is trunk
+ * (or leaves the tracked set), then include the root and every descendant.
+ */
+function stackScope(state: StackState, branch: string): Set<string> {
+  if (!state.branches[branch]) {
+    throw new CliError(
+      `\`${branch}\` is not tracked.\n\nRun \`ado-stack status\` to see tracked branches.`,
+    );
+  }
+  let root = branch;
+  const seen = new Set<string>();
+  while (true) {
+    if (seen.has(root)) {
+      throw new CliError(`Stack contains a cycle at \`${root}\`.`);
+    }
+    seen.add(root);
+    const parent = state.branches[root]?.parent;
+    if (!parent || parent === state.defaultBranch || !state.branches[parent]) {
+      break;
+    }
+    root = parent;
+  }
+  return new Set([root, ...descendantsOf(state, root)]);
 }
 
 async function continueRestack(ctx: AppContext, reporter: RestackReporter): Promise<void> {
@@ -437,8 +484,9 @@ async function retargetIfNeeded(
 async function loadSnapshots(
   ctx: AppContext,
   state: StackState,
+  only?: ReadonlySet<string>,
 ): Promise<Map<number, PullRequestSnapshot>> {
-  const branches = stackOrder(state);
+  const branches = stackOrder(state).filter((branch) => only === undefined || only.has(branch));
   const pullRequestIds = branches.flatMap((branch) => {
     const id = state.branches[branch]?.pullRequestId;
     return id === undefined ? [] : [id];
@@ -454,5 +502,5 @@ async function loadSnapshots(
       "Azure DevOps authentication is required to restack safely after merges.\n\nRun `ado-stack auth login`, then retry `ado-stack restack`.",
     );
   }
-  return requireCompleteSnapshots(await loadTrackedSnapshots(access.client, state));
+  return requireCompleteSnapshots(await loadTrackedSnapshots(access.client, state, only));
 }
