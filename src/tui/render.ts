@@ -3,6 +3,7 @@ import {
   type PrDisplay,
   type StackStatus,
   type StatusRow,
+  forestLayout,
   prStatusLabel,
 } from "../commands/status.ts";
 import { formatBranch } from "../ui/format.ts";
@@ -18,10 +19,11 @@ export function renderStackLines(status: StackStatus, prefix: string): string[] 
   if (status.rows.length === 0) {
     lines.push(`  ${pc.dim("(empty)")}`);
   }
-  for (const row of status.rows) {
-    lines.push(rowLine(row, prefix));
-    if (row.pr.kind === "loaded") {
-      lines.push(`      ${pc.dim(row.pr.url)}`);
+  for (const line of forestLayout(status.rows, status.defaultBranch)) {
+    lines.push(rowLine(line.row, prefix, `  ${line.prefix}${line.connector}`));
+    if (line.row.pr.kind === "loaded") {
+      const hanging = line.connector === "└── " ? "    " : "│   ";
+      lines.push(`  ${line.prefix}${hanging}    ${pc.dim(line.row.pr.url)}`);
     }
   }
   for (const issue of status.issues) {
@@ -35,10 +37,10 @@ export function renderStackLines(status: StackStatus, prefix: string): string[] 
   return lines;
 }
 
-function rowLine(row: StatusRow, prefix: string): string {
+function rowLine(row: StatusRow, prefix: string, tree: string): string {
   const marker = row.isCurrent ? pc.green("●") : " ";
-  const name = formatBranch(row.branch, prefix).padEnd(14);
-  const prLabel = (row.pr.kind === "none" ? "no-pr" : `#${row.pr.id}`).padEnd(6);
+  const name = formatBranch(row.branch, prefix);
+  const prLabel = row.pr.kind === "none" ? "no-pr" : `#${row.pr.id}`;
   const flags: string[] = [];
   if (row.needsRestack) {
     flags.push(pc.yellow("↑ restack needed"));
@@ -49,7 +51,8 @@ function rowLine(row: StatusRow, prefix: string): string {
     flags.push(pc.red("local/remote diverge"));
   }
   const title = row.pr.kind === "loaded" && row.pr.title ? `  ${row.pr.title}` : "";
-  return `${marker} ${row.isCurrent ? pc.bold(name) : name} ${prLabel} ${statusLabel(row.pr).padEnd(10)}${title}${
+  const labeled = row.isCurrent ? pc.bold(name) : name;
+  return `${tree}${marker} ${labeled} ${prLabel} ${statusLabel(row.pr)}${title}${
     flags.length > 0 ? `  ${flags.join("  ")}` : ""
   }`.trimEnd();
 }

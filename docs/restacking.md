@@ -98,7 +98,7 @@ Remote PR property `ado-stack.last-restack-base` stores the same SHA so a fresh 
 
 Before `rebase --onto`:
 
-- the branch is in the tracked linear stack
+- the branch is in the tracked stack
 - `oldBase` is an ancestor of the branch
 - the unique commit list is non-empty
 - the remote tip equals `lastKnownRemoteTip` (no unknown remote commits)

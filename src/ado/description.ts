@@ -7,16 +7,57 @@ export type StackDescriptionItem = {
   id: number;
   title: string;
   current: boolean;
+  branch?: string;
+  parent?: string;
 };
 
 export function generateStackBlock(items: StackDescriptionItem[]): string {
-  const lines = items.map((item) => {
-    const label = `- #${item.id} ${item.title}`;
-    return item.current ? `- **#${item.id} ${item.title}**` : label;
-  });
+  const lines = items.every(hasParentLinks)
+    ? descriptionTree(items)
+    : items.map((item) => {
+        const label = `- #${item.id} ${item.title}`;
+        return item.current ? `- **#${item.id} ${item.title}**` : label;
+      });
   return [MANAGED_START, "### Stack", "", ...lines, "", "Managed by ado-stack.", MANAGED_END].join(
     "\n",
   );
+}
+
+function hasParentLinks(
+  item: StackDescriptionItem,
+): item is StackDescriptionItem & { branch: string; parent: string } {
+  return Boolean(item.branch && item.parent);
+}
+
+function descriptionTree(
+  items: Array<StackDescriptionItem & { branch: string; parent: string }>,
+): string[] {
+  const byParent = new Map<string, typeof items>();
+  const branches = new Set(items.map((item) => item.branch));
+  for (const item of items) {
+    const list = byParent.get(item.parent) ?? [];
+    list.push(item);
+    byParent.set(item.parent, list);
+  }
+  const roots = [...byParent.keys()].filter((parent) => !branches.has(parent));
+  const lines: string[] = [];
+  const walk = (parent: string, prefix: string): void => {
+    const children = byParent.get(parent) ?? [];
+    for (const [index, item] of children.entries()) {
+      if (!item) {
+        continue;
+      }
+      const last = index === children.length - 1;
+      const connector = last ? "└── " : "├── ";
+      const label = `#${item.id} ${item.title}`;
+      lines.push(`${prefix}${connector}${item.current ? `**${label}**` : label}`);
+      walk(item.branch, `${prefix}${last ? "    " : "│   "}`);
+    }
+  };
+  for (const root of roots) {
+    walk(root, "");
+  }
+  return lines;
 }
 
 export function upsertManagedSection(description: string, block: string): string {

@@ -15,6 +15,20 @@ describe("PR managed section", () => {
     expect(block).toContain("<!-- ado-stack:end -->");
   });
 
+  test("renders a forest when parent links are present", () => {
+    const block = generateStackBlock([
+      { id: 1, title: "base", current: false, branch: "base", parent: "main" },
+      { id: 2, title: "left", current: true, branch: "left", parent: "base" },
+      { id: 3, title: "right", current: false, branch: "right", parent: "base" },
+      { id: 4, title: "leaf", current: false, branch: "leaf", parent: "main" },
+    ]);
+    expect(block).toContain("├── #1 base");
+    expect(block).toContain("**#2 left**");
+    expect(block).toContain("#3 right");
+    expect(block).toContain("#4 leaf");
+    expect(block).not.toContain("- #1 base");
+  });
+
   test("preserves human description when inserting a managed block", () => {
     const next = upsertManagedSection(
       "Please review the API.\n",

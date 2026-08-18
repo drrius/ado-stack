@@ -48,7 +48,7 @@ export const COMMAND_SPECS: CommandSpec[] = [
       "ado-stack init [--organization <url>] [--project <name>] [--repository <name>] [--default-branch <name>] [--remote <name>]",
     ],
     detail:
-      "Detect the Azure DevOps remote, write .git/ado-stack/state.json, and rebuild from pull request metadata when it is unambiguous.",
+      "Detect the Azure DevOps remote, write .git/ado-stack/state.json, and rebuild from pull request targets and metadata when parentage agrees. A parent with several children is a forest, not a conflict.",
     flags: [
       { name: "organization", kind: "string", valueName: "url" },
       { name: "project", kind: "string", valueName: "name" },
@@ -78,10 +78,10 @@ export const COMMAND_SPECS: CommandSpec[] = [
   {
     name: "create",
     group: "daily",
-    summary: "Create the next stack branch from the current branch",
+    summary: "Create a stack branch from the current branch",
     usage: ["ado-stack create <name>"],
     detail:
-      "Create a Git branch from HEAD and record it as the next layer of the linear stack. Honors the configured branchPrefix.",
+      "Create a Git branch from HEAD and record it in the stack. If the current branch already has children, the new branch is a sibling. Honors the configured branchPrefix.",
     positionals: [{ name: "name", required: true }],
     flags: [{ name: "help", kind: "boolean" }],
   },
@@ -102,15 +102,17 @@ export const COMMAND_SPECS: CommandSpec[] = [
     group: "daily",
     summary: "Show local and Azure DevOps stack state",
     usage: ["ado-stack status"],
-    detail: "Print the stack from trunk to tip, pull request state, and whether restack is needed.",
+    detail: "Print the stack forest from trunk, pull request state, and whether restack is needed.",
     flags: [{ name: "help", kind: "boolean" }],
   },
   {
     name: "up",
     group: "daily",
-    summary: "Check out the child stack branch",
-    usage: ["ado-stack up"],
-    detail: "Check out the child of the current stack branch.",
+    summary: "Check out a child stack branch",
+    usage: ["ado-stack up", "ado-stack up <branch>"],
+    detail:
+      "Check out the child of the current stack branch. If the current branch has several children, pass the child name; ado-stack will not pick one.",
+    positionals: [{ name: "branch", required: false }],
     flags: [{ name: "help", kind: "boolean" }],
   },
   {
@@ -146,10 +148,10 @@ export const COMMAND_SPECS: CommandSpec[] = [
   {
     name: "repair",
     group: "recovery",
-    summary: "Rebuild unambiguous local state",
+    summary: "Rebuild local state from agreeing metadata",
     usage: ["ado-stack repair"],
     detail:
-      "Rebuild local state when Git, Azure DevOps metadata, and recorded parents agree. Conflicting sources of truth are reported, not guessed.",
+      "Rebuild local state when Git, Azure DevOps pull request targets, and recorded parents agree. A parent with several children is recorded. Cycles, missing parents, and parent disagreements are named and refused, not guessed.",
     flags: [{ name: "help", kind: "boolean" }],
   },
 ];

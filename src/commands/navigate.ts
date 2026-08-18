@@ -1,11 +1,24 @@
 import { CliError } from "../errors/cli-error.ts";
+import { childrenOf } from "../stack/graph.ts";
 import { looksLikePrNumber, parsePrNumber, resolveBranchArg } from "../stack/names.ts";
 import { downBranch, upBranch } from "../stack/navigation.ts";
 import { formatBranch } from "../ui/format.ts";
 import { type AppContext, createAdoClient, fromRefsHeads, requireState } from "./context.ts";
 
-export async function upCommand(ctx: AppContext): Promise<void> {
-  await move(ctx, (state, current) => upBranch(state, current), "move up the stack");
+export async function upCommand(ctx: AppContext, args: string[]): Promise<void> {
+  await move(
+    ctx,
+    (state, current) => {
+      const requested = args[0]
+        ? resolveBranchArg(args[0], {
+            prefix: ctx.config.branchPrefix,
+            known: childrenOf(state, current),
+          })
+        : undefined;
+      return upBranch(state, current, requested);
+    },
+    "move up the stack",
+  );
 }
 
 export async function downCommand(ctx: AppContext): Promise<void> {

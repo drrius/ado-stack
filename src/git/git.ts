@@ -248,6 +248,15 @@ export class GitRepo {
     await this.run(["rebase", "--onto", options.newBase, options.oldBase, options.branch]);
   }
 
+  async mergeBase(a: string, b: string): Promise<string | undefined> {
+    const result = await this.run(["merge-base", a, b], { allowFailure: true });
+    if (result.exitCode !== 0) {
+      return undefined;
+    }
+    const sha = result.stdout.trim();
+    return sha.length > 0 ? sha : undefined;
+  }
+
   async rebaseInProgress(): Promise<boolean> {
     const merge = await this.text(["rev-parse", "--git-path", "rebase-merge"]);
     const apply = await this.text(["rev-parse", "--git-path", "rebase-apply"]);

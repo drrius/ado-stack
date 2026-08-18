@@ -1,7 +1,7 @@
 import { CliError } from "../errors/cli-error.ts";
 import type { GitRepo } from "../git/git.ts";
 import type { RestackPlanState, RestackStep, StackState } from "../state/schema.ts";
-import { stackOrder } from "./graph.ts";
+import { descendantsOf, stackOrder } from "./graph.ts";
 
 export type PullRequestSnapshot = {
   id: number;
@@ -121,7 +121,7 @@ export async function planRestack(options: {
   pullRequests: Map<number, PullRequestSnapshot>;
 }): Promise<RestackPlanState> {
   const steps: RestackStep[] = [];
-  let ancestorRewritten = false;
+  const parentMoving = new Set<string>();
   for (const branch of stackOrder(options.state)) {
     const record = options.state.branches[branch];
     const ownPr =
@@ -132,10 +132,12 @@ export async function planRestack(options: {
       continue;
     }
     const assessment = await assessBranch({ ...options, branch });
-    if (!assessment.needsRebase && !ancestorRewritten) {
+    const parentWillMove =
+      parentMoving.has(assessment.effectiveParent) || parentMoving.has(assessment.currentParent);
+    if (!assessment.needsRebase && !parentWillMove) {
       continue;
     }
-    ancestorRewritten = true;
+    parentMoving.add(branch);
     const step: RestackStep = {
       branch,
       onto: assessment.effectiveParent,
@@ -286,15 +288,47 @@ function completedAncestorsDropped(state: StackState, step: RestackStep): string
 
 export class RestackConflictError extends CliError {
   readonly branch: string;
+  readonly blocked: string[];
+  readonly untouched: string[];
 
-  constructor(branch: string, cause: unknown) {
+  constructor(
+    branch: string,
+    cause: unknown,
+    options: { blocked?: string[]; untouched?: string[] } = {},
+  ) {
+    const blocked = options.blocked ?? [branch];
+    const untouched = options.untouched ?? [];
+    const blockedLine =
+      blocked.length > 0
+        ? `\n\nBlocked subtree:\n${blocked.map((name) => `  ${name}`).join("\n")}`
+        : "";
+    const untouchedLine =
+      untouched.length > 0
+        ? `\n\nUntouched branches (not restacked; still pending):\n${untouched.map((name) => `  ${name}`).join("\n")}`
+        : "";
     super(
-      `Restack stopped on \`${branch}\` because Git reported a rebase conflict.\n\nGit's rebase state has been left in place. ado-stack did not reset or discard your work.\n\nResolve the conflicted files, then:\n  git add <files>\n  git rebase --continue\n  ado-stack restack --continue\n\nTo abandon this restack attempt:\n  ado-stack restack --abort`,
+      `Restack stopped on \`${branch}\` because Git reported a rebase conflict.\n\nGit's rebase state has been left in place. ado-stack did not reset or discard your work.${blockedLine}${untouchedLine}\n\nA Git rebase is in progress, so remaining siblings cannot be restacked in this process. They stay pending in the plan.\n\nResolve the conflicted files, then:\n  git add <files>\n  git rebase --continue\n  ado-stack restack --continue\n\nTo abandon this restack attempt:\n  ado-stack restack --abort`,
       { cause, exitCode: 1 },
     );
     this.name = "RestackConflictError";
     this.branch = branch;
+    this.blocked = blocked;
+    this.untouched = untouched;
   }
+}
+
+export function conflictScope(
+  state: StackState,
+  plan: RestackPlanState,
+  branch: string,
+): { blocked: string[]; untouched: string[] } {
+  const remaining = plan.steps
+    .filter((step) => step.status === "pending" || step.status === "in-progress")
+    .map((step) => step.branch);
+  const blockedSet = new Set([branch, ...descendantsOf(state, branch)]);
+  const blocked = remaining.filter((name) => blockedSet.has(name));
+  const untouched = remaining.filter((name) => !blockedSet.has(name));
+  return { blocked, untouched };
 }
 
 export function markStep(

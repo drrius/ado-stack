@@ -66,11 +66,11 @@ A managed markdown block between `<!-- ado-stack:start -->` and `<!-- ado-stack:
 
 Azure DevOps descriptions are limited to 4000 characters. List endpoints also truncate descriptions, so submit GETs the full PR before editing.
 
-PR properties are the reconstruction source. Descriptions are for humans. If the properties API is unavailable in some organizations, `init` warns and leaves local state as the source of truth rather than parsing prose.
+Parentage is the PR target branch. Namespaced properties carry `stack-id` and `last-restack-base` so another clone can rebuild commit ranges. Descriptions are for humans. If the properties API is unavailable, `init` and `repair` still adopt from targets when those agree with local recorded parents.
 
 ## Reconciliation
 
-`init` and `repair` list PRs, read properties, and adopt a stack when every property-bearing PR shares one `stack-id` and forms a linear parent chain. Multiple stack IDs are reported, not guessed.
+`init` and `repair` list pull requests and build a forest from target branches. A parent with several children is recorded. They refuse, and leave `state.json` unchanged, when sources disagree: a cycle, a recorded or property parent that is not the PR target, a missing parent, or more than one `stack-id` on property-bearing PRs. The refusal names the branches. Multiple children are not a conflict.
 
 Local state is never trusted blindly. `status` compares Git tips, recorded SHAs, and PR source/target. Restack refuses to rewrite when the remote tip is not the last tip ado-stack pushed.
 

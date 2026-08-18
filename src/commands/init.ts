@@ -2,9 +2,12 @@ import type { AdoClient } from "../ado/client.ts";
 import { AdoError } from "../ado/errors.ts";
 import { decodeStackProperties } from "../ado/properties.ts";
 import { parseAzureDevOpsRemote } from "../ado/remote.ts";
-import type { AdoPullRequest } from "../ado/types.ts";
 import { CliError, isCliError } from "../errors/cli-error.ts";
-import { stackOrder } from "../stack/graph.ts";
+import {
+  type ReconstructPullRequest,
+  formatReconstructConflicts,
+  reconstructForest,
+} from "../stack/reconstruct.ts";
 import type { StackState } from "../state/schema.ts";
 import { logNext } from "../ui/next.ts";
 import { type AppContext, createAdoClient, detectRemote, fromRefsHeads } from "./context.ts";
@@ -78,9 +81,12 @@ export async function initCommand(
     state.defaultBranch = defaultBranch;
     const rebuilt = await reconstructFromAdo(ctx, ado, state);
     adoMetadataLoaded = true;
-    if (rebuilt) {
-      state = rebuilt;
+    if (rebuilt.ok) {
+      state = rebuilt.state;
       ctx.log.success("Rebuilt stack state from Azure DevOps pull request metadata.");
+    } else if (!rebuilt.conflicts.some((conflict) => conflict.kind === "empty")) {
+      ctx.log.warn(formatReconstructConflicts(rebuilt.conflicts));
+      ctx.log.warn("Left local stack state unchanged instead of guessing parentage.");
     }
   } catch (error) {
     adoMetadataCause = error;
@@ -137,97 +143,34 @@ export async function reconstructFromAdo(
   ctx: AppContext,
   ado: AdoClient,
   base: StackState,
-): Promise<StackState | undefined> {
+): Promise<ReturnType<typeof reconstructForest>> {
   const prs = await ado.listPullRequests({ status: "all" });
-  const withMeta: Array<{
-    pr: AdoPullRequest;
-    parent: string;
-    branch: string;
-    stackId: string;
-    lastRestackBase: string;
-  }> = [];
+  const pullRequests: ReconstructPullRequest[] = [];
   for (const pr of prs) {
-    let properties: Record<string, string>;
+    let properties: ReconstructPullRequest["properties"];
     try {
-      properties = await ado.getPullRequestProperties(pr.pullRequestId);
+      properties = decodeStackProperties(await ado.getPullRequestProperties(pr.pullRequestId));
     } catch {
-      continue;
+      properties = undefined;
     }
-    const meta = decodeStackProperties(properties);
-    if (!meta) {
-      continue;
-    }
-    withMeta.push({
-      pr,
-      parent: meta.parent,
-      branch: meta.branch || fromRefsHeads(pr.sourceRefName),
-      stackId: meta.stackId,
-      lastRestackBase: meta.lastRestackBase,
+    pullRequests.push({
+      id: pr.pullRequestId,
+      status: pr.status,
+      sourceBranch: fromRefsHeads(pr.sourceRefName),
+      targetBranch: fromRefsHeads(pr.targetRefName),
+      lastMergeSourceCommit: pr.lastMergeSourceCommit?.commitId,
+      properties,
     });
   }
-  if (withMeta.length === 0) {
-    return undefined;
-  }
-  const stacks = new Map<string, typeof withMeta>();
-  for (const item of withMeta) {
-    const list = stacks.get(item.stackId) ?? [];
-    list.push(item);
-    stacks.set(item.stackId, list);
-  }
-  if (stacks.size > 1) {
-    ctx.log.warn(
-      `Found ${stacks.size} ado-stack IDs on pull requests. Not guessing which stack to adopt. Use the clone that created the stack, or pass branches explicitly after checking Azure DevOps.`,
+  const result = reconstructForest({ base, pullRequests });
+  if (result.ok) {
+    ctx.log.verbose(
+      `Adopted ${Object.keys(result.state.branches).length} branches from pull request targets.`,
     );
-    return undefined;
+  } else {
+    ctx.log.verbose(formatReconstructConflicts(result.conflicts));
   }
-  const items = [...stacks.values()][0] ?? [];
-  const branches: StackState["branches"] = {};
-  for (const item of items) {
-    if (item.pr.status === "abandoned") {
-      continue;
-    }
-    if (
-      item.pr.status === "completed" &&
-      !items.some((other) => other.parent === item.branch && other.pr.status === "active")
-    ) {
-      continue;
-    }
-    const source = fromRefsHeads(item.pr.sourceRefName);
-    let tip = item.pr.lastMergeSourceCommit?.commitId;
-    if (!tip) {
-      try {
-        await ctx.git.fetch(base.remoteName);
-        if (await ctx.git.remoteBranchExists(base.remoteName, source)) {
-          tip = await ctx.git.getBranchTip(`${base.remoteName}/${source}`);
-        }
-      } catch {
-        tip = undefined;
-      }
-    }
-    branches[item.branch] = {
-      parent: item.parent,
-      parentTipAtCreation: item.lastRestackBase,
-      lastRestackBase: item.lastRestackBase,
-      lastLocalTip: tip ?? item.lastRestackBase,
-      lastKnownRemoteTip: tip,
-      lastSubmittedTip: tip,
-      pullRequestId: item.pr.pullRequestId,
-    };
-  }
-  const next: StackState = {
-    ...base,
-    stackId: items[0]?.stackId,
-    branches,
-  };
-  try {
-    stackOrder(next);
-  } catch (error) {
-    ctx.log.warn(
-      `Remote metadata did not form a linear stack: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return undefined;
-  }
-  return next;
+  return result;
 }
 
 function stringFlag(value: string | boolean | undefined): string | undefined {

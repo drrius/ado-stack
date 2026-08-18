@@ -93,7 +93,7 @@ async function dispatch(
       await restackCommand(ctx, flags);
       return;
     case "up":
-      await upCommand(ctx);
+      await upCommand(ctx, args);
       return;
     case "down":
       await downCommand(ctx);
