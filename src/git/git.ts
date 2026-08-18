@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { CliError } from "../errors/cli-error.ts";
 import { type GitWorktree, parseWorktreePorcelain } from "./worktree.ts";
 
@@ -269,7 +270,9 @@ export class GitRepo {
   async rebaseInProgress(): Promise<boolean> {
     const merge = await this.text(["rev-parse", "--git-path", "rebase-merge"]);
     const apply = await this.text(["rev-parse", "--git-path", "rebase-apply"]);
-    return existsSync(joinPath(this.cwd, merge)) || existsSync(joinPath(this.cwd, apply));
+    return (
+      existsSync(resolveGitPath(this.cwd, merge)) || existsSync(resolveGitPath(this.cwd, apply))
+    );
   }
 
   async abortRebase(): Promise<void> {
@@ -281,11 +284,8 @@ export class GitRepo {
   }
 }
 
-function joinPath(cwd: string, gitPath: string): string {
-  if (gitPath.startsWith("/")) {
-    return gitPath;
-  }
-  return `${cwd}/${gitPath}`;
+function resolveGitPath(cwd: string, gitPath: string): string {
+  return isAbsolute(gitPath) ? gitPath : join(cwd, gitPath);
 }
 
 async function spawnGit(args: readonly string[], cwd: string): Promise<GitRunResult> {

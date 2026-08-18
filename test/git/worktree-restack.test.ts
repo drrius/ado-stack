@@ -155,8 +155,10 @@ describe("restack and extra worktrees", () => {
           await writeCommit(worktree.git, "conflict.txt", "other\n", "other");
           await repo.git.checkout("main");
           await writeCommit(repo.git, "conflict.txt", "main\n", "main-change");
-          await worktree.git.run(["rebase", "main"], { allowFailure: true });
-          expect(await worktree.git.rebaseInProgress()).toBe(true);
+          const rebase = await worktree.git.run(["rebase", "main"], { allowFailure: true });
+          if (!(await worktree.git.rebaseInProgress())) {
+            throw new Error(`expected rebase in progress\n${rebase.stderr}\n${rebase.stdout}`);
+          }
           const aborted = await runCli(["restack", "--abort"], { cwd: repo.dir });
           expect(aborted.exitCode).toBe(0);
           expect(await worktree.git.rebaseInProgress()).toBe(true);
