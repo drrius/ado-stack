@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignore": ["dist", "node_modules", "coverage", "bun.lock"]
+    "ignore": ["dist", "node_modules", "coverage", "bun.lock", "extensions/ado-stack/out"]
   },
   "formatter": {
     "enabled": true,

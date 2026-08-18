@@ -83,6 +83,8 @@ If `schema` squash-merges into `main`, run `ado-stack restack`. The tool rebases
 | `ado-stack create <name>` | Create a stack branch from `HEAD`. If `HEAD` already has children, the new branch is a sibling. Honors `branchPrefix`. |
 | `ado-stack submit` | Push branches in parent-before-child order and create or update PRs. Writes namespaced PR properties and a managed description block. |
 | `ado-stack status` | Show the stack forest, one line per branch. `--json` prints the same model. `--web` opens a local graph with a restack conflict preflight. |
+
+The VS Code / Cursor extension in `extensions/ado-stack` is a sidebar over these commands. Package it with `bun run extension:package`.
 | `ado-stack restack` | Rebase each layer onto its live parent, depth-first from each root. `--continue` / `--abort` after conflicts. |
 | `ado-stack up` / `down` | Move to a child or the parent. `up` from a fork requires the child name. |
 | `ado-stack checkout <ref>` | Check out a branch name or PR number. |

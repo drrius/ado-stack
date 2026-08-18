@@ -1,0 +1,84 @@
+{
+  "name": "ado-stack",
+  "displayName": "ado-stack",
+  "description": "Stacked pull requests for Azure DevOps. A view over the ado-stack CLI.",
+  "version": "0.2.5",
+  "publisher": "drrius",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ado-stack",
+          "title": "ado-stack",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ado-stack": [
+        {
+          "id": "ado-stack.stack",
+          "name": "Stack"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ado-stack.refresh",
+        "title": "ado-stack: Refresh"
+      },
+      {
+        "command": "ado-stack.checkout",
+        "title": "ado-stack: Checkout Branch"
+      },
+      {
+        "command": "ado-stack.restack",
+        "title": "ado-stack: Restack"
+      },
+      {
+        "command": "ado-stack.submit",
+        "title": "ado-stack: Submit"
+      },
+      {
+        "command": "ado-stack.up",
+        "title": "ado-stack: Up"
+      },
+      {
+        "command": "ado-stack.down",
+        "title": "ado-stack: Down"
+      },
+      {
+        "command": "ado-stack.init",
+        "title": "ado-stack: Init"
+      }
+    ],
+    "configuration": {
+      "title": "ado-stack",
+      "properties": {
+        "adoStack.command": {
+          "type": "string",
+          "default": "ado-stack",
+          "description": "ado-stack executable. Must be on PATH or an absolute path."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "package": "tsc -p . && vsce package --no-dependencies --allow-missing-repository -o ado-stack.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.10",
+    "@types/vscode": "1.85.0",
+    "@vscode/vsce": "3.2.2",
+    "typescript": "5.9.3"
+  }
+}
