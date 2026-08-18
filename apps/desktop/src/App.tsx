@@ -321,9 +321,7 @@ export default function App() {
         diff: "",
       };
     }
-    const untracked = entries
-      .filter((line) => line.startsWith("??"))
-      .map((line) => line.slice(3));
+    const untracked = entries.filter((line) => line.startsWith("??")).map((line) => line.slice(3));
     const untrackedNote =
       untracked.length > 0
         ? `\n\nNote: untracked files were left in the worktree (they will NOT be committed): ${untracked.join(", ")}`
