@@ -12,6 +12,7 @@ import {
 } from "../stack/reconstruct.ts";
 import type { StackState } from "../state/schema.ts";
 import { logNext } from "../ui/next.ts";
+import { type StepUpdate, createStepProgress } from "../ui/step-progress.ts";
 import { type AppContext, createAdoClient, detectRemote, fromRefsHeads } from "./context.ts";
 import { reconcileCompletedMerges } from "./reconcile.ts";
 
@@ -19,7 +20,9 @@ export async function initCommand(
   ctx: AppContext,
   flags: Record<string, string | boolean>,
 ): Promise<void> {
-  const remote = await detectRemote(ctx);
+  const progress = createStepProgress();
+
+  const remote = await progress.run("Detecting git remote", async () => detectRemote(ctx));
   const parsed = remote ? parseAzureDevOpsRemote(remote.url) : undefined;
   const organizationUrl =
     stringFlag(flags.organization) ?? ctx.config.organization ?? parsed?.organizationUrl;
@@ -57,7 +60,9 @@ export async function initCommand(
     branches: {},
   };
 
-  const existing = await ctx.stateStore.read();
+  const existing = await progress.run("Reading local stack state", async () =>
+    ctx.stateStore.read(),
+  );
   if (existing) {
     state = {
       ...existing,
@@ -75,20 +80,32 @@ export async function initCommand(
   let adoMetadataCause: unknown;
   let rebuiltState: StackState | undefined;
   try {
-    const ado = await createAdoClient(ctx, state);
-    const repo = await ado.getRepository();
-    repositoryId = repo.id;
-    if (repo.defaultBranch) {
-      defaultBranch = fromRefsHeads(repo.defaultBranch);
+    const adoResult = await progress.run("Loading Azure DevOps metadata", async (update) => {
+      update("connecting");
+      const ado = await createAdoClient(ctx, state);
+      update("fetching repository");
+      const repo = await ado.getRepository();
+      const reconstructionBase: StackState = {
+        ...state,
+        repositoryId: repo.id,
+        defaultBranch: repo.defaultBranch ? fromRefsHeads(repo.defaultBranch) : state.defaultBranch,
+      };
+      update("rebuilding stack from pull requests");
+      const rebuilt = await reconstructFromAdo(ctx, ado, reconstructionBase, update);
+      return { repo, rebuilt, untracked: reconstructionBase.untracked };
+    });
+    repositoryId = adoResult.repo.id;
+    if (adoResult.repo.defaultBranch) {
+      defaultBranch = fromRefsHeads(adoResult.repo.defaultBranch);
     }
     state.repositoryId = repositoryId;
     state.defaultBranch = defaultBranch;
-    const rebuilt = await reconstructFromAdo(ctx, ado, state);
+    state.untracked = adoResult.untracked;
     adoMetadataLoaded = true;
-    if (rebuilt.ok) {
-      rebuiltState = rebuilt.state;
-    } else if (!rebuilt.conflicts.some((conflict) => conflict.kind === "empty")) {
-      ctx.log.warn(formatReconstructConflicts(rebuilt.conflicts));
+    if (adoResult.rebuilt.ok) {
+      rebuiltState = adoResult.rebuilt.state;
+    } else if (!adoResult.rebuilt.conflicts.some((conflict) => conflict.kind === "empty")) {
+      ctx.log.warn(formatReconstructConflicts(adoResult.rebuilt.conflicts));
       ctx.log.warn("Left local stack state unchanged instead of guessing parentage.");
     }
   } catch (error) {
@@ -97,12 +114,17 @@ export async function initCommand(
   }
 
   if (rebuiltState) {
-    state = await hydrateForestTips(ctx.git, rebuiltState);
+    const hydrated = rebuiltState;
+    state = await progress.run("Syncing tracked branch tips", async () =>
+      hydrateForestTips(ctx.git, hydrated),
+    );
     ctx.log.success("Rebuilt stack state from Azure DevOps pull request metadata.");
-    state = await reconcileCompletedMerges(ctx, state);
+    state = await progress.run("Reconciling completed merges", async () =>
+      reconcileCompletedMerges(ctx, state),
+    );
   }
 
-  await ctx.stateStore.write(state);
+  await progress.run("Writing local stack state", async () => ctx.stateStore.write(state));
   const layers = Object.keys(state.branches).length;
   const repositoryLabel = `${state.organizationName}/${state.project}/${state.repository}`;
   const stackDetails = `default branch ${state.defaultBranch}${layers ? `, ${layers} tracked branches` : ""}`;
@@ -152,10 +174,16 @@ export async function reconstructFromAdo(
   ctx: AppContext,
   ado: AdoClient,
   base: StackState,
+  update: StepUpdate = () => undefined,
 ): Promise<ReturnType<typeof reconstructForest>> {
+  update("listing pull requests");
   const prs = await ado.listPullRequests({ status: "all" });
+  update(`loading stack metadata for ${prs.length} pull requests`);
   const pullRequests: ReconstructPullRequest[] = [];
-  for (const pr of prs) {
+  for (const [index, pr] of prs.entries()) {
+    if (prs.length > 1 && (index === 0 || (index + 1) % 10 === 0 || index + 1 === prs.length)) {
+      update(`loading stack metadata (${index + 1}/${prs.length})`);
+    }
     let properties: ReconstructPullRequest["properties"];
     try {
       properties = decodeStackProperties(await ado.getPullRequestProperties(pr.pullRequestId));
@@ -186,6 +214,7 @@ export async function reconstructFromAdo(
     branchExists: (name) => localExisting.has(name),
     remoteBranchExists: (name) => remoteExisting.has(name),
   });
+  update("reconstructing branch parentage");
   const result = reconstructForest({ base, pullRequests });
   for (const skip of result.skipped) {
     ctx.log.warn(`Skipped PR #${skip.pullRequestId} \`${skip.sourceBranch}\`: ${skip.reason}.`);
