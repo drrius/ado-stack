@@ -24,7 +24,7 @@ import { restackRebaseGit } from "../stack/worktrees.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import { createLogger } from "../ui/log.ts";
 import { redactText } from "../ui/redact.ts";
-import { createStepProgress, type StepProgress } from "../ui/step-progress.ts";
+import { type StepProgress, createStepProgress } from "../ui/step-progress.ts";
 import {
   type UpdateNotice,
   applyUpdate,

@@ -1,5 +1,5 @@
-import { isCI, isTTY, spinner } from "@clack/prompts";
 import type { Writable } from "node:stream";
+import { isCI, isTTY, spinner } from "@clack/prompts";
 
 export type StepUpdate = (message: string) => void;
 

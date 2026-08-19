@@ -11,7 +11,7 @@ import {
 } from "../stack/reconstruct.ts";
 import type { StackState } from "../state/schema.ts";
 import { logNext } from "../ui/next.ts";
-import { createStepProgress, type StepUpdate } from "../ui/step-progress.ts";
+import { type StepUpdate, createStepProgress } from "../ui/step-progress.ts";
 import { type AppContext, createAdoClient, detectRemote, fromRefsHeads } from "./context.ts";
 import { reconcileCompletedMerges } from "./reconcile.ts";
 
