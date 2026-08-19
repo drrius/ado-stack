@@ -50,10 +50,16 @@ describe("untrack", () => {
       expect(leaf.exitCode).toBe(0);
       expect(leaf.stdout).toContain("Untracked");
       expect(Object.keys((await readState(repo.dir)).branches)).toEqual(["A"]);
+      expect((await readState(repo.dir)).untracked).toEqual(["B"]);
+
+      const listed = await runCli(["untrack", "--list"], { cwd: repo.dir });
+      expect(listed.exitCode).toBe(0);
+      expect(listed.stdout).toContain("B");
 
       const root = await runCli(["untrack", "A"], { cwd: repo.dir });
       expect(root.exitCode).toBe(0);
       expect(Object.keys((await readState(repo.dir)).branches)).toEqual([]);
+      expect((await readState(repo.dir)).untracked).toEqual(["A", "B"]);
 
       // The Git branches themselves are untouched.
       expect(await repo.git.branchExists("A")).toBe(true);

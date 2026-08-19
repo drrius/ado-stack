@@ -83,4 +83,81 @@ describe("hydrateForestTips", () => {
     await hydrateForestTips(git, state);
     expect(state.branches.feat?.lastRestackBase).toBe(sha("b"));
   });
+
+  test("sets lastKnownRemoteTip from the remote-tracking ref even when it differs from local", async () => {
+    const remote = sha("d");
+    const git = new GitRepo("/tmp", async (args) => {
+      if (args[0] === "show-ref") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+      if (args[0] === "rev-parse") {
+        const ref = args[args.length - 1];
+        if (typeof ref === "string" && ref.startsWith("origin/")) {
+          return { stdout: `${remote}\n`, stderr: "", exitCode: 0 };
+        }
+        return { stdout: `${sha("c")}\n`, stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 1 };
+    });
+    const state: StackState = {
+      version: 1,
+      organization: "https://dev.azure.com/example",
+      organizationName: "example",
+      project: "P",
+      repository: "R",
+      defaultBranch: "main",
+      remoteName: "origin",
+      branches: {
+        feat: {
+          parent: "main",
+          parentTipAtCreation: sha("a"),
+          lastRestackBase: sha("a"),
+          lastLocalTip: sha("b"),
+          lastKnownRemoteTip: sha("e"),
+        },
+      },
+    };
+    await hydrateForestTips(git, state);
+    expect(state.branches.feat?.lastLocalTip).toBe(sha("c"));
+    expect(state.branches.feat?.lastKnownRemoteTip).toBe(remote);
+  });
+
+  test("omits lastKnownRemoteTip when the remote-tracking ref is missing", async () => {
+    const git = new GitRepo("/tmp", async (args) => {
+      if (args[0] === "show-ref") {
+        const ref = args[args.length - 1];
+        if (typeof ref === "string" && ref.startsWith("refs/remotes/")) {
+          return { stdout: "", stderr: "", exitCode: 1 };
+        }
+        if (typeof ref === "string" && ref.startsWith("refs/heads/")) {
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }
+        return { stdout: "", stderr: "", exitCode: 1 };
+      }
+      if (args[0] === "rev-parse") {
+        return { stdout: `${sha("c")}\n`, stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 1 };
+    });
+    const state: StackState = {
+      version: 1,
+      organization: "https://dev.azure.com/example",
+      organizationName: "example",
+      project: "P",
+      repository: "R",
+      defaultBranch: "main",
+      remoteName: "origin",
+      branches: {
+        feat: {
+          parent: "main",
+          parentTipAtCreation: sha("a"),
+          lastRestackBase: sha("a"),
+          lastLocalTip: sha("c"),
+          lastKnownRemoteTip: sha("e"),
+        },
+      },
+    };
+    await hydrateForestTips(git, state);
+    expect(state.branches.feat?.lastKnownRemoteTip).toBeUndefined();
+  });
 });

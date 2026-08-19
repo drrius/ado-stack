@@ -130,3 +130,5 @@ A conflict leaves `git rebase` in progress and writes `.git/ado-stack/restack-in
 ## Divergence
 
 If another clone pushed to `B`, `origin/B` no longer matches `lastKnownRemoteTip`. Restack errors with both SHAs and does not push. `--force-with-lease` is a second check, not the only one.
+
+`init` and `repair` refresh `lastKnownRemoteTip` from the remote-tracking ref. They do not keep a SHA recorded before a rebase when that ref is missing or when Azure DevOps omitted `lastMergeSourceCommit`.

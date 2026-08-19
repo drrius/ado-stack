@@ -1,5 +1,6 @@
 import { CliError } from "../errors/cli-error.ts";
 import { isTracked } from "../stack/graph.ts";
+import { isUntracked } from "../stack/membership.ts";
 import { applyBranchPrefix, validateBranchName } from "../stack/names.ts";
 import { formatBranch } from "../ui/format.ts";
 import type { AppContext } from "./context.ts";
@@ -26,6 +27,11 @@ export async function createCommand(ctx: AppContext, args: string[]): Promise<vo
   }
   if (isTracked(state, name)) {
     throw new CliError(`\`${name}\` is already tracked in the stack.`);
+  }
+  if (isUntracked(state, name)) {
+    throw new CliError(
+      `\`${name}\` is untracked.\n\nRun \`ado-stack track ${name}\` to manage it again.`,
+    );
   }
   if (current !== state.defaultBranch && !isTracked(state, current)) {
     throw new CliError(

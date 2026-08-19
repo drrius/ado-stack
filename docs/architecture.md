@@ -50,6 +50,10 @@ Each tracked branch stores:
 - `lastSubmittedTip`
 - `pullRequestId`
 
+`untracked` is a list of branch names this clone does not manage. Azure DevOps still owns parentage and pull request status. It does not know which names the user chose, so membership lives here and survives `init` and `repair`. A rebuild skips those sources, counts them separately from other skips, and drops a name when its pull request completes or both Git refs disappear.
+
+`lastKnownRemoteTip` after a rebuild comes from the Git remote-tracking ref when that ref exists. Reconstruct does not copy the previous recorded SHA and does not treat Azure DevOps `lastMergeSourceCommit` as a remote tip.
+
 `lastRestackBase..branch` is the commit range that belongs to that layer. Ancestry of `main` is not enough after a squash merge. See [restacking.md](restacking.md).
 
 ## Remote metadata
@@ -70,7 +74,7 @@ Parentage is the PR target branch. Namespaced properties carry `stack-id` and `l
 
 ## Reconciliation
 
-`init` and `repair` list pull requests and build a forest from target branches. A parent with several children is recorded. They refuse, and leave `state.json` unchanged, when sources disagree: a cycle, a recorded or property parent that is not the PR target, a missing parent, or more than one `stack-id` on property-bearing PRs. The refusal names the branches. Multiple children are not a conflict.
+`init` and `repair` list pull requests and build a forest from target branches. Names in `untracked` are not adopted. A parent with several children is recorded. They refuse, and leave tracked parentage unchanged, when sources disagree: a cycle, a recorded or property parent that is not the PR target, a missing parent, or more than one `stack-id` on property-bearing PRs. The refusal names the branches. Multiple children are not a conflict.
 
 After a successful reconstruct (and on `status` and `restack` with no restack plan in progress), completed pull request status triggers merge absorption. Each completed tracked PR is dropped, its direct children are re-parented onto the completed PR's target (walking further completed targets to a living base), and those children's PRs are retargeted. Grandchildren keep their own parents. The local Git branch is deleted only when it is fully contained in the new base. Squash merges are kept and named. This repair runs before any rebase in the same invocation. `init` does not absorb when reconstruct refused. `status` skips absorption when a tracked PR cannot be loaded.
 

@@ -8,6 +8,7 @@ import { repairCommand } from "../commands/repair.ts";
 import { restackCommand } from "../commands/restack.ts";
 import { statusCommand } from "../commands/status.ts";
 import { submitCommand } from "../commands/submit.ts";
+import { trackCommand } from "../commands/track.ts";
 import { untrackCommand } from "../commands/untrack.ts";
 import { updateCommand } from "../commands/update.ts";
 import { CliError, formatError, isCliError } from "../errors/cli-error.ts";
@@ -113,7 +114,10 @@ async function dispatch(
       await repairCommand(ctx);
       return;
     case "untrack":
-      await untrackCommand(ctx, args);
+      await untrackCommand(ctx, args, flags);
+      return;
+    case "track":
+      await trackCommand(ctx, args);
       return;
     case "update":
       await updateCommand(ctx);

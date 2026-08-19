@@ -4,6 +4,7 @@ import { decodeStackProperties } from "../ado/properties.ts";
 import { parseAzureDevOpsRemote } from "../ado/remote.ts";
 import { CliError, isCliError } from "../errors/cli-error.ts";
 import { hydrateForestTips } from "../stack/hydrate.ts";
+import { pruneUntracked, untrackedNames } from "../stack/membership.ts";
 import {
   type ReconstructPullRequest,
   formatReconstructConflicts,
@@ -170,9 +171,30 @@ export async function reconstructFromAdo(
       properties,
     });
   }
+  const localExisting = new Set<string>();
+  const remoteExisting = new Set<string>();
+  for (const name of untrackedNames(base)) {
+    if (await ctx.git.branchExists(name)) {
+      localExisting.add(name);
+    }
+    if (await ctx.git.remoteBranchExists(base.remoteName, name)) {
+      remoteExisting.add(name);
+    }
+  }
+  pruneUntracked(base, {
+    pullRequests: pullRequests.map((pr) => ({ sourceBranch: pr.sourceBranch, status: pr.status })),
+    branchExists: (name) => localExisting.has(name),
+    remoteBranchExists: (name) => remoteExisting.has(name),
+  });
   const result = reconstructForest({ base, pullRequests });
   for (const skip of result.skipped) {
     ctx.log.warn(`Skipped PR #${skip.pullRequestId} \`${skip.sourceBranch}\`: ${skip.reason}.`);
+  }
+  const untrackedSkipCount = result.skipped.filter((skip) => skip.reason === "untracked").length;
+  if (untrackedSkipCount > 0) {
+    ctx.log.info(
+      `Skipped ${untrackedSkipCount} untracked pull request${untrackedSkipCount === 1 ? "" : "s"}.`,
+    );
   }
   if (result.ok) {
     ctx.log.verbose(

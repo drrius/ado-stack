@@ -1,9 +1,26 @@
 import { CliError } from "../errors/cli-error.ts";
+import { excludeFromStack, isUntracked, untrackedNames } from "../stack/membership.ts";
 import { resolveBranchArg } from "../stack/names.ts";
 import { formatBranch } from "../ui/format.ts";
 import { type AppContext, requireState } from "./context.ts";
 
-export async function untrackCommand(ctx: AppContext, args: string[]): Promise<void> {
+export async function untrackCommand(
+  ctx: AppContext,
+  args: string[],
+  flags: Record<string, string | boolean> = {},
+): Promise<void> {
+  if (flags.list === true) {
+    const state = await requireState(ctx);
+    const names = untrackedNames(state);
+    if (names.length === 0) {
+      ctx.log.info("No untracked branches.");
+      return;
+    }
+    for (const name of names) {
+      ctx.log.info(formatBranch(name, ctx.config.branchPrefix));
+    }
+    return;
+  }
   const arg = args[0];
   if (!arg) {
     throw new CliError("Usage: ado-stack untrack <branch>");
@@ -13,6 +30,9 @@ export async function untrackCommand(ctx: AppContext, args: string[]): Promise<v
     prefix: ctx.config.branchPrefix,
     known: Object.keys(state.branches),
   });
+  if (isUntracked(state, branch)) {
+    throw new CliError(`\`${branch}\` is already untracked.`);
+  }
   if (!state.branches[branch]) {
     throw new CliError(`\`${branch}\` is not tracked.`);
   }
@@ -31,7 +51,7 @@ export async function untrackCommand(ctx: AppContext, args: string[]): Promise<v
         .join("\n")}\n\nUntrack the children first, or let them merge and restack.`,
     );
   }
-  delete state.branches[branch];
+  excludeFromStack(state, branch);
   await ctx.stateStore.write(state);
   ctx.log.success(
     `Untracked ${formatBranch(branch, ctx.config.branchPrefix)}. The Git branch and any pull request were not changed.`,

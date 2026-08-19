@@ -92,7 +92,10 @@ If recovery is not possible, `ado-stack restack --abort` aborts the Git rebase a
 
 ```bash
 ado-stack untrack <branch>   # stop managing a branch; Git branch and PR untouched.
-                             # Refused if it has tracked children or a restack is in progress.
+                             # Survives init and repair. Refused if it has tracked children
+                             # or a restack is in progress.
+ado-stack untrack --list     # names currently untracked
+ado-stack track <branch>     # put an untracked name back and rebuild it from ADO
 ado-stack repair             # rebuild state when Git and ADO PR targets agree; names conflicts, never guesses
 ado-stack up [<child>]       # checkout child (name required at a fork)
 ado-stack down               # checkout parent
@@ -105,5 +108,5 @@ ado-stack checkout <branch-or-pr-number>
 - Never rewrite history on branches you did not create; never rebase or amend stack branches with raw git — use `restack`.
 - Do not "fix" broken state with destructive git commands (`reset --hard`, branch deletion, manual `rebase --abort` outside the recipe above). Use `ado-stack restack --abort`, `ado-stack repair`, or ask the user.
 - Uncommitted changes to tracked files block `create`, `checkout`, `restack`, and `submit` — commit or stash those first. Untracked files are fine; do not stash or delete them. (A stack branch held by *another* worktree is stricter: that worktree must be fully clean before a restack will touch it.)
-- Branch names may carry a configured `branchPrefix`. The short names printed by `status` are accepted by every branch-taking command (`create`, `checkout`, `up`, `restack --stack`, `untrack`).
+- Branch names may carry a configured `branchPrefix`. The short names printed by `status` are accepted by every branch-taking command (`create`, `checkout`, `up`, `restack --stack`, `untrack`, `track`).
 - Never write a PAT to files, logs, command arguments, or PR descriptions.

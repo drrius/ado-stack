@@ -21,6 +21,7 @@ export type StackStateV1 = {
   defaultBranch: string;
   remoteName: string;
   branches: Record<string, StackBranchState>;
+  untracked?: string[];
 };
 
 export type StackState = StackStateV1;
@@ -54,6 +55,28 @@ function optionalString(value: unknown): string | undefined {
 
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+}
+
+function parseUntracked(value: unknown): string[] | undefined {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string" || item.length === 0) {
+      return undefined;
+    }
+    if (seen.has(item)) {
+      return undefined;
+    }
+    seen.add(item);
+    names.push(item);
+  }
+  return names.sort();
 }
 
 function parseBranch(value: unknown): StackBranchState | undefined {
@@ -129,6 +152,17 @@ export function parseStackState(value: unknown): ParsedState {
     }
     branches[name] = parsed;
   }
+  const untracked = parseUntracked(value.untracked);
+  if (untracked === undefined) {
+    return { ok: false, error: "Stack state untracked must be an array of unique branch names." };
+  }
+  const overlap = untracked.filter((name) => name in branches);
+  if (overlap.length > 0) {
+    return {
+      ok: false,
+      error: `Stack state lists ${overlap.join(", ")} as both tracked and untracked.`,
+    };
+  }
   const state: StackStateV1 = {
     version: 1,
     organization,
@@ -139,6 +173,9 @@ export function parseStackState(value: unknown): ParsedState {
     remoteName,
     branches,
   };
+  if (untracked.length > 0) {
+    state.untracked = untracked;
+  }
   const stackId = optionalString(value.stackId);
   if (stackId) {
     state.stackId = stackId;

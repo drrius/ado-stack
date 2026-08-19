@@ -2,6 +2,7 @@ import type { StackPrMetadata } from "../ado/properties.ts";
 import type { PullRequestStatus } from "../ado/types.ts";
 import type { StackBranchState, StackState } from "../state/schema.ts";
 import { findCycle, missingParents } from "./graph.ts";
+import { isUntracked } from "./membership.ts";
 
 export type ReconstructPullRequest = {
   id: number;
@@ -41,11 +42,7 @@ export function reconstructForest(options: {
   pullRequests: ReconstructPullRequest[];
 }): ReconstructResult {
   const skipped: AdoptionSkip[] = [];
-  const adoptable = adoptablePullRequests(
-    options.base.defaultBranch,
-    options.pullRequests,
-    skipped,
-  );
+  const adoptable = adoptablePullRequests(options.base, options.pullRequests, skipped);
   const propertyIds = [
     ...new Set(
       adoptable.map((pr) => pr.properties?.stackId).filter((id): id is string => Boolean(id)),
@@ -57,6 +54,14 @@ export function reconstructForest(options: {
     ]);
   }
   if (adoptable.length === 0) {
+    if (skipped.some((skip) => skip.reason === "untracked")) {
+      const next: StackState = {
+        ...options.base,
+        branches: {},
+      };
+      accountUnadoptedActivePullRequests(options.pullRequests, new Set(), skipped);
+      return { ok: true, state: next, skipped };
+    }
     return fail(options.pullRequests, skipped, [{ kind: "empty" }]);
   }
 
@@ -120,16 +125,19 @@ export function reconstructForest(options: {
       pr.lastMergeSourceCommit ??
       (recorded?.parent === pr.targetBranch ? recorded.lastLocalTip : undefined) ??
       restackBase;
-    branches[pr.sourceBranch] = {
+    const adopted: StackBranchState = {
       parent: pr.targetBranch,
       parentTipAtCreation:
         recorded?.parent === pr.targetBranch ? recorded.parentTipAtCreation : restackBase,
       lastRestackBase: restackBase,
       lastLocalTip: tip,
-      lastKnownRemoteTip: pr.lastMergeSourceCommit ?? recorded?.lastKnownRemoteTip,
-      lastSubmittedTip: pr.lastMergeSourceCommit ?? recorded?.lastSubmittedTip,
       pullRequestId: pr.id,
     };
+    const lastSubmittedTip = pr.lastMergeSourceCommit ?? recorded?.lastSubmittedTip;
+    if (lastSubmittedTip) {
+      adopted.lastSubmittedTip = lastSubmittedTip;
+    }
+    branches[pr.sourceBranch] = adopted;
   }
 
   const next: StackState = {
@@ -189,10 +197,11 @@ function formatConflict(conflict: ReconstructConflict): string {
 }
 
 function adoptablePullRequests(
-  defaultBranch: string,
+  base: StackState,
   pullRequests: ReconstructPullRequest[],
   skipped: AdoptionSkip[],
 ): ReconstructPullRequest[] {
+  const defaultBranch = base.defaultBranch;
   const bySource = new Map<string, ReconstructPullRequest[]>();
   for (const pr of pullRequests) {
     if (pr.status === "abandoned") {
@@ -205,7 +214,12 @@ function adoptablePullRequests(
 
   const needed = new Set<string>();
   const walk = (branch: string, seen: Set<string>): void => {
-    if (branch === defaultBranch || needed.has(branch) || seen.has(branch)) {
+    if (
+      branch === defaultBranch ||
+      needed.has(branch) ||
+      seen.has(branch) ||
+      isUntracked(base, branch)
+    ) {
       return;
     }
     seen.add(branch);
@@ -233,6 +247,14 @@ function adoptablePullRequests(
         pullRequestId: pr.id,
         sourceBranch: pr.sourceBranch,
         reason: "source branch is the default branch",
+      });
+      continue;
+    }
+    if (isUntracked(base, pr.sourceBranch) || isUntracked(base, pr.targetBranch)) {
+      skipped.push({
+        pullRequestId: pr.id,
+        sourceBranch: pr.sourceBranch,
+        reason: "untracked",
       });
       continue;
     }
