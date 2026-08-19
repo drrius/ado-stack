@@ -54,7 +54,10 @@ export function reconstructForest(options: {
     ]);
   }
   if (adoptable.length === 0) {
-    if (skipped.some((skip) => skip.reason === "untracked")) {
+    if (
+      skipped.some((skip) => skip.reason === "untracked") &&
+      Object.keys(options.base.branches).length === 0
+    ) {
       const next: StackState = {
         ...options.base,
         branches: {},

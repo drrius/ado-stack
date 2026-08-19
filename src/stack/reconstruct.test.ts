@@ -385,6 +385,27 @@ describe("reconstructForest", () => {
     expect(result.skipped[0]?.reason).toBe("untracked");
   });
 
+  test("refuses an empty forest when local-only tracked branches still exist", () => {
+    const state = base();
+    state.untracked = ["noise"];
+    state.branches.local = {
+      parent: "main",
+      parentTipAtCreation: "1",
+      lastRestackBase: "1",
+      lastLocalTip: "2",
+    };
+    const result = reconstructForest({
+      base: state,
+      pullRequests: [pr(2, "noise", "main")],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.conflicts).toEqual([{ kind: "empty" }]);
+    expect(result.skipped[0]?.reason).toBe("untracked");
+  });
+
   test("skips a child that targets an untracked parent instead of missing-parent", () => {
     const state = base();
     state.untracked = ["base"];
