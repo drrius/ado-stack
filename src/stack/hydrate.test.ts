@@ -84,8 +84,7 @@ describe("hydrateForestTips", () => {
     expect(state.branches.feat?.lastRestackBase).toBe(sha("b"));
   });
 
-  test("sets lastKnownRemoteTip from the remote-tracking ref even when it differs from local", async () => {
-    const remote = sha("d");
+  test("does not copy the remote-tracking ref into lastKnownRemoteTip", async () => {
     const git = new GitRepo("/tmp", async (args) => {
       if (args[0] === "show-ref") {
         return { stdout: "", stderr: "", exitCode: 0 };
@@ -93,7 +92,7 @@ describe("hydrateForestTips", () => {
       if (args[0] === "rev-parse") {
         const ref = args[args.length - 1];
         if (typeof ref === "string" && ref.startsWith("origin/")) {
-          return { stdout: `${remote}\n`, stderr: "", exitCode: 0 };
+          return { stdout: `${sha("d")}\n`, stderr: "", exitCode: 0 };
         }
         return { stdout: `${sha("c")}\n`, stderr: "", exitCode: 0 };
       }
@@ -113,28 +112,24 @@ describe("hydrateForestTips", () => {
           parentTipAtCreation: sha("a"),
           lastRestackBase: sha("a"),
           lastLocalTip: sha("b"),
-          lastKnownRemoteTip: sha("e"),
         },
       },
     };
     await hydrateForestTips(git, state);
     expect(state.branches.feat?.lastLocalTip).toBe(sha("c"));
-    expect(state.branches.feat?.lastKnownRemoteTip).toBe(remote);
+    expect(state.branches.feat?.lastKnownRemoteTip).toBeUndefined();
   });
 
-  test("omits lastKnownRemoteTip when the remote-tracking ref is missing", async () => {
+  test("drops a recorded lastKnownRemoteTip that no longer matches the remote-tracking ref", async () => {
     const git = new GitRepo("/tmp", async (args) => {
       if (args[0] === "show-ref") {
-        const ref = args[args.length - 1];
-        if (typeof ref === "string" && ref.startsWith("refs/remotes/")) {
-          return { stdout: "", stderr: "", exitCode: 1 };
-        }
-        if (typeof ref === "string" && ref.startsWith("refs/heads/")) {
-          return { stdout: "", stderr: "", exitCode: 0 };
-        }
-        return { stdout: "", stderr: "", exitCode: 1 };
+        return { stdout: "", stderr: "", exitCode: 0 };
       }
       if (args[0] === "rev-parse") {
+        const ref = args[args.length - 1];
+        if (typeof ref === "string" && ref.startsWith("origin/")) {
+          return { stdout: `${sha("d")}\n`, stderr: "", exitCode: 0 };
+        }
         return { stdout: `${sha("c")}\n`, stderr: "", exitCode: 0 };
       }
       return { stdout: "", stderr: "", exitCode: 1 };
@@ -159,5 +154,42 @@ describe("hydrateForestTips", () => {
     };
     await hydrateForestTips(git, state);
     expect(state.branches.feat?.lastKnownRemoteTip).toBeUndefined();
+  });
+
+  test("keeps a recorded lastKnownRemoteTip that still matches the remote-tracking ref", async () => {
+    const lease = sha("d");
+    const git = new GitRepo("/tmp", async (args) => {
+      if (args[0] === "show-ref") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+      if (args[0] === "rev-parse") {
+        const ref = args[args.length - 1];
+        if (typeof ref === "string" && ref.startsWith("origin/")) {
+          return { stdout: `${lease}\n`, stderr: "", exitCode: 0 };
+        }
+        return { stdout: `${sha("c")}\n`, stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 1 };
+    });
+    const state: StackState = {
+      version: 1,
+      organization: "https://dev.azure.com/example",
+      organizationName: "example",
+      project: "P",
+      repository: "R",
+      defaultBranch: "main",
+      remoteName: "origin",
+      branches: {
+        feat: {
+          parent: "main",
+          parentTipAtCreation: sha("a"),
+          lastRestackBase: sha("a"),
+          lastLocalTip: sha("c"),
+          lastKnownRemoteTip: lease,
+        },
+      },
+    };
+    await hydrateForestTips(git, state);
+    expect(state.branches.feat?.lastKnownRemoteTip).toBe(lease);
   });
 });

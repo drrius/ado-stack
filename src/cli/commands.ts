@@ -60,7 +60,7 @@ export const COMMAND_SPECS: CommandSpec[] = [
       "ado-stack init [--organization <url>] [--project <name>] [--repository <name>] [--default-branch <name>] [--remote <name>]",
     ],
     detail:
-      "Detect the Azure DevOps remote, write .git/ado-stack/state.json, and rebuild from pull request targets and metadata when parentage agrees. A parent with several children is a forest, not a conflict. Active pull requests that are not adopted are named with a reason. Names on the local untracked list are skipped and counted separately. Remote-tracking tips are read from Git; previous lastKnownRemoteTip values are not carried forward.",
+      "Detect the Azure DevOps remote, write .git/ado-stack/state.json, and rebuild from pull request targets and metadata when parentage agrees. A parent with several children is a forest, not a conflict. Active pull requests that are not adopted are named with a reason. Names on the local untracked list are skipped and counted separately. Previous lastKnownRemoteTip values are not carried forward or replaced from origin.",
     flags: [
       { name: "organization", kind: "string", valueName: "url" },
       { name: "project", kind: "string", valueName: "name" },

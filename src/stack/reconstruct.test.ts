@@ -419,6 +419,7 @@ describe("reconstructForest", () => {
       return;
     }
     expect(result.state.branches.feat?.lastKnownRemoteTip).toBeUndefined();
+    expect(result.state.branches.feat?.lastSubmittedTip).toBe("sha-1");
   });
 });
 

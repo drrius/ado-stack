@@ -18,10 +18,11 @@ export async function hydrateForestTips(git: GitRepo, state: StackState): Promis
         }
       }
     }
-    if (await git.remoteBranchExists(state.remoteName, name)) {
-      branch.lastKnownRemoteTip = await git.getBranchTip(`${state.remoteName}/${name}`);
-    } else {
-      branch.lastKnownRemoteTip = undefined;
+    if (branch.lastKnownRemoteTip && (await git.remoteBranchExists(state.remoteName, name))) {
+      const origin = await git.getBranchTip(`${state.remoteName}/${name}`);
+      if (origin !== branch.lastKnownRemoteTip) {
+        branch.lastKnownRemoteTip = undefined;
+      }
     }
   }
   return state;

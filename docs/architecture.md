@@ -52,7 +52,7 @@ Each tracked branch stores:
 
 `untracked` is a list of branch names this clone does not manage. Azure DevOps still owns parentage and pull request status. It does not know which names the user chose, so membership lives here and survives `init` and `repair`. A rebuild skips those sources, counts them separately from other skips, and drops a name when its pull request completes or both Git refs disappear.
 
-`lastKnownRemoteTip` after a rebuild comes from the Git remote-tracking ref when that ref exists. Reconstruct does not copy the previous recorded SHA and does not treat Azure DevOps `lastMergeSourceCommit` as a remote tip.
+`lastKnownRemoteTip` is a push lease written by submit and restack. Reconstruct omits it. Hydrate confirms a recorded lease against the remote-tracking ref and drops it on mismatch. It never copies `origin/<branch>` into the field. Azure DevOps `lastMergeSourceCommit` may seed `lastSubmittedTip`, not the lease.
 
 `lastRestackBase..branch` is the commit range that belongs to that layer. Ancestry of `main` is not enough after a squash merge. See [restacking.md](restacking.md).
 

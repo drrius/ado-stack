@@ -131,4 +131,4 @@ A conflict leaves `git rebase` in progress and writes `.git/ado-stack/restack-in
 
 If another clone pushed to `B`, `origin/B` no longer matches `lastKnownRemoteTip`. Restack errors with both SHAs and does not push. `--force-with-lease` is a second check, not the only one.
 
-`init` and `repair` refresh `lastKnownRemoteTip` from the remote-tracking ref. They do not keep a SHA recorded before a rebase when that ref is missing or when Azure DevOps omitted `lastMergeSourceCommit`.
+`init` and `repair` omit `lastKnownRemoteTip`. They do not copy the previous recorded SHA, the live remote-tracking ref, or Azure DevOps `lastMergeSourceCommit` into that field. Submit and restack write the lease after a successful push. Restack of a submitted branch with no recorded lease refuses when `origin/<branch>` differs from the local tip.
