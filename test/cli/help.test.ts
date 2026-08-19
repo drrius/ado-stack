@@ -31,6 +31,15 @@ describe("CLI flags", () => {
     expect(restack.stdout).toContain("update its remote");
     expect(restack.stdout).toContain("never submitted");
 
+    const untrack = await runCli(["untrack", "--help"], { cwd: process.cwd() });
+    expect(untrack.exitCode).toBe(0);
+    expect(untrack.stdout).toContain("ado-stack untrack <branch>");
+    expect(untrack.stdout).toContain("ado-stack untrack --list");
+
+    const track = await runCli(["track", "--help"], { cwd: process.cwd() });
+    expect(track.exitCode).toBe(0);
+    expect(track.stdout).toContain("ado-stack track <branch>");
+
     const status = await runCli(["status", "--help"], { cwd: process.cwd() });
     expect(status.exitCode).toBe(0);
     expect(status.stdout).toContain("--json");

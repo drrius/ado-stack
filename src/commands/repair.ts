@@ -10,6 +10,9 @@ export async function repairCommand(ctx: AppContext): Promise<void> {
   const ado = await createAdoClient(ctx, state);
   const rebuilt = await reconstructFromAdo(ctx, ado, state);
   if (!rebuilt.ok) {
+    if (JSON.stringify(state) !== before) {
+      await ctx.stateStore.write(state);
+    }
     ctx.log.warn(
       `${formatReconstructConflicts(rebuilt.conflicts)}\n\nLocal state was left unchanged.`,
     );

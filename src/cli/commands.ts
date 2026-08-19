@@ -11,6 +11,7 @@ export type CommandName =
   | "config"
   | "repair"
   | "untrack"
+  | "track"
   | "update"
   | "help"
   | "version";
@@ -59,7 +60,7 @@ export const COMMAND_SPECS: CommandSpec[] = [
       "ado-stack init [--organization <url>] [--project <name>] [--repository <name>] [--default-branch <name>] [--remote <name>]",
     ],
     detail:
-      "Detect the Azure DevOps remote, write .git/ado-stack/state.json, and rebuild from pull request targets and metadata when parentage agrees. A parent with several children is a forest, not a conflict. Active pull requests that are not adopted are named with a reason.",
+      "Detect the Azure DevOps remote, write .git/ado-stack/state.json, and rebuild from pull request targets and metadata when parentage agrees. A parent with several children is a forest, not a conflict. Active pull requests that are not adopted are named with a reason. Names on the local untracked list are skipped and counted separately. Previous lastKnownRemoteTip values are not carried forward or replaced from origin.",
     flags: [
       { name: "organization", kind: "string", valueName: "url" },
       { name: "project", kind: "string", valueName: "name" },
@@ -173,16 +174,29 @@ export const COMMAND_SPECS: CommandSpec[] = [
     summary: "Rebuild local state from agreeing metadata",
     usage: ["ado-stack repair"],
     detail:
-      "Rebuild local state when Git, Azure DevOps pull request targets, and recorded parents agree. A parent with several children is recorded. Cycles, missing parents, and parent disagreements are named and refused, not guessed.",
+      "Rebuild local state when Git, Azure DevOps pull request targets, and recorded parents agree. A parent with several children is recorded. Cycles, missing parents, and parent disagreements are named and refused, not guessed. Untracked names stay untracked.",
     flags: [{ name: "help", kind: "boolean" }],
   },
   {
     name: "untrack",
     group: "recovery",
     summary: "Stop managing a branch without touching Git or its pull request",
-    usage: ["ado-stack untrack <branch>"],
+    usage: ["ado-stack untrack <branch>", "ado-stack untrack --list"],
     detail:
-      "Remove one branch from local stack state. The local branch, the remote branch, and any pull request are left exactly as they are; ado-stack simply stops managing the branch. A branch with tracked children is refused so a stack is never silently broken, and nothing is untracked while a restack plan is in progress.",
+      "Remove one branch from local stack state and remember that choice. Later init and repair leave it out of the forest. The local branch, the remote branch, and any pull request are left exactly as they are. A branch with tracked children is refused so a stack is never silently broken, and nothing is untracked while a restack plan is in progress. --list prints currently untracked names.",
+    positionals: [{ name: "branch", required: false }],
+    flags: [
+      { name: "list", kind: "boolean" },
+      { name: "help", kind: "boolean" },
+    ],
+  },
+  {
+    name: "track",
+    group: "recovery",
+    summary: "Return an untracked branch to the stack",
+    usage: ["ado-stack track <branch>"],
+    detail:
+      "Drop a name from the untracked list and rebuild it into the forest from Azure DevOps pull request metadata. Refused while a restack is in progress, if the name is already tracked, or if it is not on the untracked list.",
     positionals: [{ name: "branch", required: true }],
     flags: [{ name: "help", kind: "boolean" }],
   },

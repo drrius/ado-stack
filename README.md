@@ -145,7 +145,8 @@ If `schema` squash-merges into `main`, run `ado-stack restack`. The tool rebases
 | `ado-stack update` | Check GitHub Releases and replace the installed binary when a newer version exists. |
 | `ado-stack config` | Get or set `organization`, `project`, `repository`, `defaultBranch`, `branchPrefix`, `authMode`. |
 | `ado-stack repair` | Rebuild local state when Git and Azure DevOps agree. Names cycles and parent disagreements; does not guess. |
-| `ado-stack untrack <branch>` | Stop managing a branch. The Git branch and any PR are left exactly as they are. Refused while it has tracked children or a restack is in progress. |
+| `ado-stack untrack <branch>` | Stop managing a branch. The Git branch and any PR are left exactly as they are. The name is remembered so `init` and `repair` do not adopt it again. Refused while it has tracked children or a restack is in progress. `--list` prints the untracked names. |
+| `ado-stack track <branch>` | Return an untracked branch to the stack and rebuild it from Azure DevOps metadata. |
 
 `ado-stack --help` and `ado-stack --version` work on the compiled binary. Version comes from `package.json`.
 

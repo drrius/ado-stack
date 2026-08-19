@@ -346,6 +346,102 @@ describe("reconstructForest", () => {
     }
     expect(result.state.branches.feat?.lastRestackBase).toBe("property-base");
   });
+
+  test("does not adopt an untracked source and names the skip", () => {
+    const state = base();
+    state.untracked = ["noise"];
+    const result = reconstructForest({
+      base: state,
+      pullRequests: [pr(1, "feat", "main"), pr(2, "noise", "main")],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(Object.keys(result.state.branches)).toEqual(["feat"]);
+    expect(result.state.untracked).toEqual(["noise"]);
+    expect(result.skipped).toEqual([
+      {
+        pullRequestId: 2,
+        sourceBranch: "noise",
+        reason: "untracked",
+      },
+    ]);
+  });
+
+  test("succeeds with an empty forest when every active PR is untracked", () => {
+    const state = base();
+    state.untracked = ["noise"];
+    const result = reconstructForest({
+      base: state,
+      pullRequests: [pr(2, "noise", "main")],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches).toEqual({});
+    expect(result.state.untracked).toEqual(["noise"]);
+    expect(result.skipped[0]?.reason).toBe("untracked");
+  });
+
+  test("refuses an empty forest when local-only tracked branches still exist", () => {
+    const state = base();
+    state.untracked = ["noise"];
+    state.branches.local = {
+      parent: "main",
+      parentTipAtCreation: "1",
+      lastRestackBase: "1",
+      lastLocalTip: "2",
+    };
+    const result = reconstructForest({
+      base: state,
+      pullRequests: [pr(2, "noise", "main")],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.conflicts).toEqual([{ kind: "empty" }]);
+    expect(result.skipped[0]?.reason).toBe("untracked");
+  });
+
+  test("skips a child that targets an untracked parent instead of missing-parent", () => {
+    const state = base();
+    state.untracked = ["base"];
+    const result = reconstructForest({
+      base: state,
+      pullRequests: [pr(1, "base", "main"), pr(2, "child", "base"), pr(3, "feat", "main")],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(Object.keys(result.state.branches).sort()).toEqual(["feat"]);
+    expect(result.skipped.map((skip) => skip.sourceBranch).sort()).toEqual(["base", "child"]);
+    expect(result.skipped.every((skip) => skip.reason === "untracked")).toBe(true);
+  });
+
+  test("does not carry lastKnownRemoteTip from the previous record", () => {
+    const state = base();
+    state.branches.feat = {
+      parent: "main",
+      parentTipAtCreation: "1",
+      lastRestackBase: "1",
+      lastLocalTip: "2",
+      lastKnownRemoteTip: "stale-remote",
+    };
+    const result = reconstructForest({
+      base: state,
+      pullRequests: [pr(1, "feat", "main")],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.state.branches.feat?.lastKnownRemoteTip).toBeUndefined();
+    expect(result.state.branches.feat?.lastSubmittedTip).toBe("sha-1");
+  });
 });
 
 function pr(id: number, source: string, target: string) {
