@@ -24,6 +24,7 @@ import { restackRebaseGit } from "../stack/worktrees.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
 import { createLogger } from "../ui/log.ts";
 import { redactText } from "../ui/redact.ts";
+import { type StepProgress, createStepProgress } from "../ui/step-progress.ts";
 import {
   type UpdateNotice,
   applyUpdate,
@@ -38,6 +39,12 @@ import { renderStackLines } from "./render.ts";
 export type TuiIo = { input?: Readable; output?: Writable };
 
 type Session = { ctx: AppContext; io: TuiIo; update: UpdateNotice };
+
+type HomeView =
+  | { kind: "not-repo" }
+  | { kind: "no-state"; detected: string }
+  | { kind: "ready"; status: StackStatus }
+  | { kind: "error"; message: string };
 
 type HomeAction =
   | "navigate"
@@ -68,29 +75,42 @@ export async function runTui(options: {
   checkUpdate?: (configDir: string) => Promise<UpdateNotice>;
 }): Promise<number> {
   const io: TuiIo = options.io ?? {};
+  intro(pc.inverse(` ado-stack ${VERSION} `), { ...io });
+
   const print = (line: string) => log.message(line, { ...io });
   const logger = createLogger({ verbose: false, debug: false, stdout: print, stderr: print });
-  const ctx = await loadContext({
-    cwd: options.cwd,
-    log: logger,
-    verbose: false,
-    debug: false,
-    requireGit: false,
+  const progress = createStepProgress({ output: io.output ?? process.stdout });
+  const ctx = await progress.run("Starting ado-stack", async (update) => {
+    update("loading configuration");
+    return loadContext({
+      cwd: options.cwd,
+      log: logger,
+      verbose: false,
+      debug: false,
+      requireGit: false,
+    });
   });
-  const update = await (options.checkUpdate ?? defaultCheckUpdate)(ctx.configDir);
-  const session: Session = { ctx, io, update };
   const isRepo = await ctx.git.isRepository();
-  intro(pc.inverse(` ado-stack ${VERSION} `), { ...io });
-  const updateNote = formatUpdateNote(update);
-  if (updateNote) {
-    note(updateNote, "Update", { ...io });
-  }
+  let update: UpdateNotice = { kind: "unknown" };
+  void (options.checkUpdate ?? defaultCheckUpdate)(ctx.configDir)
+    .then((notice) => {
+      update = notice;
+    })
+    .catch(() => {
+      update = { kind: "unknown" };
+    });
+
   while (true) {
-    const action = await homeMenu(session, isRepo);
+    const view = await loadHomeView({ ctx, io, update }, isRepo, progress);
+    const updateNote = formatUpdateNote(update);
+    if (updateNote) {
+      note(updateNote, "Update", { ...io });
+    }
+    const action = await presentHomeMenu({ ctx, io, update }, view);
     if (action === "quit") {
       break;
     }
-    const result = await dispatchAction(session, action);
+    const result = await dispatchAction({ ctx, io, update }, action);
     if (result === "exit") {
       break;
     }
@@ -103,45 +123,76 @@ async function defaultCheckUpdate(configDir: string): Promise<UpdateNotice> {
   return checkForUpdate({ current: VERSION, configDir });
 }
 
-async function homeMenu(session: Session, isRepo: boolean): Promise<HomeAction> {
+async function loadHomeView(
+  session: Session,
+  isRepo: boolean,
+  progress: StepProgress,
+): Promise<HomeView> {
   if (!isRepo) {
-    note(
-      "This directory is not a Git repository.\nAuthentication works anywhere; the stack screens need a repository.",
-      "ado-stack",
-      { ...session.io },
-    );
-    return pickAction(session, withUpdate(["auth", "quit"], session.update), "auth");
+    return { kind: "not-repo" };
   }
   const state = await session.ctx.stateStore.read();
   if (!state) {
-    const remote = await detectRemote(session.ctx);
-    const detected =
-      remote && parseAzureDevOpsRemote(remote.url)
-        ? `Detected Azure DevOps remote \`${remote.remoteName}\`: ${redactText(remote.url)}`
-        : "No Azure DevOps remote detected. Initialize will ask for the details.";
-    note(`No stack state in this repository yet.\n${detected}`, "Welcome", { ...session.io });
-    return pickAction(session, withUpdate(["init", "auth", "quit"], session.update), "init");
+    return progress.run("Checking repository", async (update) => {
+      update("detecting git remote");
+      const remote = await detectRemote(session.ctx);
+      const detected =
+        remote && parseAzureDevOpsRemote(remote.url)
+          ? `Detected Azure DevOps remote \`${remote.remoteName}\`: ${redactText(remote.url)}`
+          : "No Azure DevOps remote detected. Initialize will ask for the details.";
+      return { kind: "no-state", detected };
+    });
   }
-  let status: StackStatus;
-  try {
-    status = await loadStackStatus(session.ctx);
-  } catch (error) {
-    log.error(formatError(error), { ...session.io });
-    return pickAction(
-      session,
-      withUpdate(["auth", "init", "refresh", "quit"], session.update),
-      "refresh",
-    );
-  }
-  note(renderStackLines(status, session.ctx.config.branchPrefix).join("\n"), "Stack", {
-    ...session.io,
+  return progress.run("Loading stack status", async (update) => {
+    update("fetching branches and pull requests");
+    try {
+      const status = await loadStackStatus(session.ctx);
+      return { kind: "ready", status };
+    } catch (error) {
+      return { kind: "error", message: formatError(error) };
+    }
   });
-  const actions = withUpdate(
-    ["navigate", "create", "submit", "restack", "auth", "init", "refresh", "quit"],
-    session.update,
-  );
-  const recommended = recommendedAction(status.next);
-  return pickAction(session, actions, recommended ?? "navigate", recommended);
+}
+
+async function presentHomeMenu(session: Session, view: HomeView): Promise<HomeAction> {
+  switch (view.kind) {
+    case "not-repo":
+      note(
+        "This directory is not a Git repository.\nAuthentication works anywhere; the stack screens need a repository.",
+        "ado-stack",
+        { ...session.io },
+      );
+      return pickAction(session, withUpdate(["auth", "quit"], session.update), "auth");
+    case "no-state":
+      note(`No stack state in this repository yet.\n${view.detected}`, "Welcome", {
+        ...session.io,
+      });
+      return pickAction(session, withUpdate(["init", "auth", "quit"], session.update), "init");
+    case "error":
+      log.error(view.message, { ...session.io });
+      return pickAction(
+        session,
+        withUpdate(["auth", "init", "refresh", "quit"], session.update),
+        "refresh",
+      );
+    case "ready":
+      note(renderStackLines(view.status, session.ctx.config.branchPrefix).join("\n"), "Stack", {
+        ...session.io,
+      });
+      return pickAction(
+        session,
+        withUpdate(
+          ["navigate", "create", "submit", "restack", "auth", "init", "refresh", "quit"],
+          session.update,
+        ),
+        recommendedAction(view.status.next) ?? "navigate",
+        recommendedAction(view.status.next),
+      );
+    default: {
+      const _exhaustive: never = view;
+      throw new Error(`Unhandled home view ${String(_exhaustive)}`);
+    }
+  }
 }
 
 async function pickAction(

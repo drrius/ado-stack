@@ -162,6 +162,45 @@ describe("forest of stacks", () => {
       await repo.cleanup();
     }
   }, 30_000);
+
+  test("init applies repository default branch before reconstructing", async () => {
+    const repo = await createTempRepo();
+    const fake = new FakeAzureDevOps({
+      organization: "example",
+      project: "Platform",
+      repository: "app",
+      token: "test-pat",
+      defaultBranch: "develop",
+      repositoryId: "repo-develop",
+    });
+    try {
+      const origin = await fake.listen();
+      seedPr(fake, 501, "feature-on-develop", "develop");
+
+      const initialized = await runCli(
+        [
+          "init",
+          "--organization",
+          origin,
+          "--project",
+          "Platform",
+          "--repository",
+          "app",
+          "--default-branch",
+          "main",
+        ],
+        { cwd: repo.dir, env },
+      );
+      expect(initialized.exitCode).toBe(0);
+      const state = await readState(repo.dir);
+      expect(state.defaultBranch).toBe("develop");
+      expect(state.repositoryId).toBe("repo-develop");
+      expect(state.branches["feature-on-develop"]?.pullRequestId).toBe(501);
+    } finally {
+      fake.stop();
+      await repo.cleanup();
+    }
+  }, 30_000);
 });
 
 async function init(dir: string, origin: string): Promise<void> {

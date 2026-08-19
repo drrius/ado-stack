@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { runTui } from "../../src/tui/session.ts";
 import type { UpdateNotice } from "../../src/update.ts";
+import { VERSION } from "../../src/version.ts";
 import { FakeAzureDevOps } from "../ado/fake-server.ts";
 import { type TempRepo, createTempRepo, runCli, writeCommit } from "../helpers/repo.ts";
 
@@ -120,6 +121,21 @@ describe("TUI session smoke", () => {
     });
     await session.waitFor("9.9.9 is available");
     await session.waitFor("Update ado-stack");
+    session.press(KEY.ctrlC);
+    expect(await session.done).toBe(0);
+  }, 15_000);
+
+  test("paints intro before background work finishes", async () => {
+    let releaseUpdate: (notice: UpdateNotice) => void = () => undefined;
+    const pendingUpdate = new Promise<UpdateNotice>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    const session = startSession(repo.dir, {
+      checkUpdate: () => pendingUpdate,
+    });
+    await session.waitFor(`ado-stack ${VERSION}`);
+    releaseUpdate({ kind: "current", current: VERSION });
+    await session.waitFor("What next?");
     session.press(KEY.ctrlC);
     expect(await session.done).toBe(0);
   }, 15_000);
