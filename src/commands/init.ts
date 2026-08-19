@@ -78,40 +78,37 @@ export async function initCommand(
   let adoMetadataError: string | undefined;
   let adoMetadataCause: unknown;
   let rebuiltState: StackState | undefined;
-  const adoLoad = await progress.run("Loading Azure DevOps metadata", async (update) => {
-    try {
+  try {
+    const adoResult = await progress.run("Loading Azure DevOps metadata", async (update) => {
       update("connecting");
       const ado = await createAdoClient(ctx, state);
       update("fetching repository");
       const repo = await ado.getRepository();
-      update("rebuilding stack from pull requests");
-      const rebuilt = await reconstructFromAdo(ctx, ado, state, update);
-      return { ok: true as const, repo, rebuilt };
-    } catch (error) {
-      return {
-        ok: false as const,
-        error,
-        message: error instanceof Error ? error.message : String(error),
+      const reconstructionBase: StackState = {
+        ...state,
+        repositoryId: repo.id,
+        defaultBranch: repo.defaultBranch ? fromRefsHeads(repo.defaultBranch) : state.defaultBranch,
       };
-    }
-  });
-  if (adoLoad.ok) {
-    repositoryId = adoLoad.repo.id;
-    if (adoLoad.repo.defaultBranch) {
-      defaultBranch = fromRefsHeads(adoLoad.repo.defaultBranch);
+      update("rebuilding stack from pull requests");
+      const rebuilt = await reconstructFromAdo(ctx, ado, reconstructionBase, update);
+      return { repo, rebuilt };
+    });
+    repositoryId = adoResult.repo.id;
+    if (adoResult.repo.defaultBranch) {
+      defaultBranch = fromRefsHeads(adoResult.repo.defaultBranch);
     }
     state.repositoryId = repositoryId;
     state.defaultBranch = defaultBranch;
     adoMetadataLoaded = true;
-    if (adoLoad.rebuilt.ok) {
-      rebuiltState = adoLoad.rebuilt.state;
-    } else if (!adoLoad.rebuilt.conflicts.some((conflict) => conflict.kind === "empty")) {
-      ctx.log.warn(formatReconstructConflicts(adoLoad.rebuilt.conflicts));
+    if (adoResult.rebuilt.ok) {
+      rebuiltState = adoResult.rebuilt.state;
+    } else if (!adoResult.rebuilt.conflicts.some((conflict) => conflict.kind === "empty")) {
+      ctx.log.warn(formatReconstructConflicts(adoResult.rebuilt.conflicts));
       ctx.log.warn("Left local stack state unchanged instead of guessing parentage.");
     }
-  } else {
-    adoMetadataCause = adoLoad.error;
-    adoMetadataError = adoLoad.message;
+  } catch (error) {
+    adoMetadataCause = error;
+    adoMetadataError = error instanceof Error ? error.message : String(error);
   }
 
   if (rebuiltState) {
