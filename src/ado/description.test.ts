@@ -80,7 +80,7 @@ describe("PR managed section", () => {
       ]),
     );
     expect(humanDescription(updated).trim()).toBe("Keep me");
-    expect(updated).toContain("#2 B");
-    expect(updated).not.toContain("- **#1 A**");
+    expect(updated).toContain("#2 **B**");
+    expect(updated).not.toContain("**#");
   });
 });
