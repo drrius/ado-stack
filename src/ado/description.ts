@@ -14,13 +14,18 @@ export type StackDescriptionItem = {
 export function generateStackBlock(items: StackDescriptionItem[]): string {
   const lines = items.every(hasParentLinks)
     ? descriptionTree(items)
-    : items.map((item) => {
-        const label = `- #${item.id} ${item.title}`;
-        return item.current ? `- **#${item.id} ${item.title}**` : label;
-      });
+    : items.map((item) => `- ${stackItemLabel(item)}`);
   return [MANAGED_START, "### Stack", "", ...lines, "", "Managed by ado-stack.", MANAGED_END].join(
     "\n",
   );
+}
+
+function stackItemLabel(item: StackDescriptionItem): string {
+  const reference = `#${item.id}`;
+  if (!item.current) {
+    return `${reference} ${item.title}`;
+  }
+  return `${reference} **${item.title}**`;
 }
 
 function hasParentLinks(
@@ -49,8 +54,7 @@ function descriptionTree(
       }
       const last = index === children.length - 1;
       const connector = last ? "└── " : "├── ";
-      const label = `#${item.id} ${item.title}`;
-      lines.push(`${prefix}${connector}${item.current ? `**${label}**` : label}`);
+      lines.push(`${prefix}${connector}${stackItemLabel(item)}`);
       walk(item.branch, `${prefix}${last ? "    " : "│   "}`);
     }
   };

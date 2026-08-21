@@ -70,7 +70,8 @@ describe("submit against fake Azure DevOps", () => {
       const meta = decodeStackProperties(schemaPr?.properties ?? {});
       expect(meta?.parent).toBe("main");
       expect(meta?.branch).toBe("schema");
-      expect(apiPr?.description).toContain("**#");
+      expect(apiPr?.description).toContain("**add api**");
+      expect(apiPr?.description).not.toContain("**#");
     } finally {
       fake.stop();
       await repo.cleanup();
