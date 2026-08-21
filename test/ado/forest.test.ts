@@ -86,7 +86,7 @@ describe("forest of stacks", () => {
       const bare = await createTempRepo({ bare: true });
       await repo.git.run(["remote", "add", "origin", bare.dir]);
       await repo.git.push("origin", "main", { setUpstream: true });
-      const submit = await runCli(["submit"], { cwd: repo.dir, env });
+      const submit = await runCli(["submit", "--all"], { cwd: repo.dir, env });
       expect(submit.exitCode).toBe(0);
       const created = [...fake.pullRequests.values()];
       const parentBeforeChild = stackOrder(await readState(repo.dir));

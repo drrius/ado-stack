@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { StackState } from "../state/schema.ts";
-import { childrenOf, findCycle, missingParents, stackOrder } from "./graph.ts";
+import {
+  childrenOf,
+  findCycle,
+  isStandaloneBranch,
+  missingParents,
+  stackOrder,
+  stackScope,
+} from "./graph.ts";
 import { applyBranchPrefix, looksLikePrNumber, validateBranchName } from "./names.ts";
 import { downBranch, upBranch } from "./navigation.ts";
 
@@ -45,6 +52,10 @@ describe("stack graph", () => {
     };
     expect(stackOrder(forest)).toEqual(["fix/a", "fix/b", "base", "child", "grand", "sib"]);
     expect(childrenOf(forest, "base")).toEqual(["child", "sib"]);
+    expect([...stackScope(forest, "child")].sort()).toEqual(["base", "child", "grand", "sib"]);
+    expect([...stackScope(forest, "fix/a")]).toEqual(["fix/a"]);
+    expect(isStandaloneBranch(forest, "fix/a")).toBe(true);
+    expect(isStandaloneBranch(forest, "base")).toBe(false);
   });
 
   test("navigates up and down a linear stack", () => {

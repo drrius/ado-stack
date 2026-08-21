@@ -173,4 +173,61 @@ describe("submit against fake Azure DevOps", () => {
       await repo.cleanup();
     }
   }, 30_000);
+
+  test("submit from one root does not edit unrelated PRs that share trunk", async () => {
+    const repo = await createTempRepo();
+    const fake = new FakeAzureDevOps({
+      organization: "example",
+      project: "Platform",
+      repository: "app",
+      token: "test-pat",
+    });
+    const env = { ADO_STACK_PAT: "test-pat" };
+    try {
+      const origin = await fake.listen();
+      await runCli(
+        [
+          "init",
+          "--organization",
+          origin,
+          "--project",
+          "Platform",
+          "--repository",
+          "app",
+          "--default-branch",
+          "main",
+        ],
+        { cwd: repo.dir, env },
+      );
+      for (const name of ["feat-a", "feat-b", "feat-c", "feat-d"]) {
+        await repo.git.checkout("main");
+        await runCli(["create", name], { cwd: repo.dir, env });
+        await writeCommit(repo.git, `${name}.txt`, `${name}\n`, name);
+      }
+      const bare = await createTempRepo({ bare: true });
+      await repo.git.run(["remote", "add", "origin", bare.dir]);
+      await repo.git.push("origin", "main", { setUpstream: true });
+      await repo.git.checkout("feat-c");
+      const result = await runCli(["submit"], { cwd: repo.dir, env });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Submitting 1 pull request");
+      expect(result.stdout).not.toContain("4-PR stack");
+      expect(fake.pullRequests.size).toBe(1);
+      const [pr] = [...fake.pullRequests.values()];
+      expect(pr?.sourceRefName).toBe("refs/heads/feat-c");
+      expect(pr?.description ?? "").not.toContain("<!-- ado-stack:start -->");
+      expect(pr?.description ?? "").not.toContain("feat-a");
+
+      const all = await runCli(["submit", "--all"], { cwd: repo.dir, env });
+      expect(all.exitCode).toBe(0);
+      expect(fake.pullRequests.size).toBe(4);
+      for (const opened of fake.pullRequests.values()) {
+        expect(opened.description ?? "").not.toContain("<!-- ado-stack:start -->");
+      }
+      await bare.cleanup();
+    } finally {
+      fake.stop();
+      await repo.cleanup();
+    }
+  }, 30_000);
 });

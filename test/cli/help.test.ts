@@ -46,6 +46,11 @@ describe("CLI flags", () => {
     expect(status.stdout).toContain("--web");
     expect(status.stdout).toContain("--urls");
     expect(status.stdout).toContain("--width <n>");
+
+    const submit = await runCli(["submit", "--help"], { cwd: process.cwd() });
+    expect(submit.exitCode).toBe(0);
+    expect(submit.stdout).toContain("--all");
+    expect(submit.stdout).toContain("Other roots that share trunk are left alone");
   });
 
   test("rejects unknown flags and PATs on argv", async () => {

@@ -45,10 +45,10 @@ ado-stack create schema     # branch from HEAD, tracked as child of current stac
 # edit files, git add, git commit
 ado-stack create api        # stacks on top of schema
 # edit, commit
-ado-stack submit            # pushes parent-before-child; opens/updates PRs targeting each parent
+ado-stack submit            # pushes the current stack parent-before-child; opens/updates those PRs
 ```
 
-`create <name>` honors a configured `branchPrefix` (e.g. `alice/`). `submit` preserves existing PR titles and human description text; `--title <title>` sets the title for the current branch's PR.
+`create <name>` honors a configured `branchPrefix` (e.g. `alice/`). `submit` acts on the tree that contains HEAD. Other roots that share trunk are left alone. Pass `--all` to submit every tracked stack. `submit` preserves existing PR titles and human description text; `--title <title>` sets the title for the current branch's PR.
 
 ## Reading state — parse JSON
 

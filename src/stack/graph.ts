@@ -123,3 +123,38 @@ export function descendantsOf(state: StackState, branch: string): string[] {
   walk(branch);
   return found;
 }
+
+function stackRoot(state: StackState, branch: string): string {
+  if (!state.branches[branch]) {
+    throw new CliError(
+      `\`${branch}\` is not tracked.\n\nRun \`ado-stack status\` to see tracked branches.`,
+    );
+  }
+  let root = branch;
+  const seen = new Set<string>();
+  while (true) {
+    if (seen.has(root)) {
+      throw new CliError(`Stack contains a cycle at \`${root}\`.`);
+    }
+    seen.add(root);
+    const parent = state.branches[root]?.parent;
+    if (!parent || parent === state.defaultBranch || !state.branches[parent]) {
+      return root;
+    }
+    root = parent;
+  }
+}
+
+export function stackScope(state: StackState, branch: string): Set<string> {
+  const root = stackRoot(state, branch);
+  return new Set([root, ...descendantsOf(state, root)]);
+}
+
+export function isStandaloneBranch(state: StackState, branch: string): boolean {
+  const record = state.branches[branch];
+  return (
+    record !== undefined &&
+    record.parent === state.defaultBranch &&
+    childrenOf(state, branch).length === 0
+  );
+}
