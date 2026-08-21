@@ -1,19 +1,26 @@
 ---
 name: ado-stack
-description: Manage Graphite-style stacked pull requests in Azure DevOps with the ado-stack CLI. Use when creating, submitting, restacking, or repairing stacked branches/PRs in a repo whose remote is Azure DevOps (dev.azure.com), or when the user mentions ado-stack, stacked PRs on ADO, or restacking.
+description: Drive the ado-stack CLI for stacked Azure DevOps PRs. Use ONLY when the user explicitly asks for ado-stack (by name, including init/install/setup), or after confirming $(git rev-parse --git-dir)/ado-stack/state.json already exists. Do not use for ordinary branches, PRs, restacks, or because the remote is Azure DevOps (dev.azure.com / visualstudio.com).
 ---
 
 # ado-stack: stacked PRs on Azure DevOps
 
 Drive the `ado-stack` CLI non-interactively. Prefer `--json` surfaces and parse them; never scrape human-readable output.
 
-## Stack model
+## When to use
 
-A stack is a forest of ordinary Git branches: each branch has one parent, the bottom branch's parent is trunk (e.g. `main`). `submit` opens one Azure DevOps PR per branch, each PR targeting its parent branch, so every PR shows only its own diff. When a lower PR merges, `restack` rebases the descendants onto the new base without replaying merged commits, then retargets their PRs.
+Do not apply this skill by default. Use it only when at least one of these is true:
 
-## Detection and setup
+1. The user explicitly asked for ado-stack (by name), including asking to init, install, or set it up.
+2. The repository is already initialized: `$(git rev-parse --git-dir)/ado-stack/state.json` exists.
 
-Applies only inside a Git repo with an Azure DevOps remote (`dev.azure.com` / `visualstudio.com`). Check every remote, not just `origin` — the CLI itself accepts any remote and merely prefers `origin`: `git remote -v`.
+An Azure DevOps remote (`dev.azure.com` / `visualstudio.com`) is not a reason to use this skill. Ordinary branch, commit, and pull-request work is not a reason either. Do not run `ado-stack init` or switch the workflow to stacked PRs unless the user asked.
+
+If neither condition holds, stop following this skill.
+
+## Setup
+
+If already initialized, skip `init` unless the user asked to re-init or repair.
 
 Always disable the interactive UI first — a bare `ado-stack` at a TTY opens a TUI:
 
@@ -21,7 +28,7 @@ Always disable the interactive UI first — a bare `ado-stack` at a TTY opens a 
 export ADO_STACK_NO_TUI=1   # or pass --no-tui per invocation
 ```
 
-Then:
+Only if the user asked to start using ado-stack and state is missing, detect the remote and initialize. Check every remote, not just `origin` — the CLI accepts any remote and prefers `origin`: `git remote -v`.
 
 ```bash
 ado-stack auth status            # check credentials
