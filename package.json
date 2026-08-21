@@ -1,6 +1,6 @@
 {
   "name": "ado-stack",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": false,
   "license": "MIT",
   "description": "Graphite-style stacked pull requests for Azure DevOps",
