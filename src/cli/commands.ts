@@ -101,11 +101,12 @@ export const COMMAND_SPECS: CommandSpec[] = [
     name: "submit",
     group: "daily",
     summary: "Push the stack and create or update pull requests",
-    usage: ["ado-stack submit [--title <title>]"],
+    usage: ["ado-stack submit [--title <title>] [--all]"],
     detail:
-      "Push each stack branch and create or update its Azure DevOps pull request. Existing pull request titles and human description text are preserved.",
+      "Push the current stack and create or update its Azure DevOps pull requests. The current stack is the tree that contains the checked-out branch: its root and every descendant. Other roots that share trunk are left alone. --all submits every tracked stack. Existing pull request titles and human description text are preserved. A standalone branch whose parent is trunk and which has no tracked children does not get a managed stack block.",
     flags: [
       { name: "title", kind: "string", valueName: "title" },
+      { name: "all", kind: "boolean" },
       { name: "help", kind: "boolean" },
     ],
   },

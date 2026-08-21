@@ -217,6 +217,13 @@ describe("submit against fake Azure DevOps", () => {
       expect(pr?.sourceRefName).toBe("refs/heads/feat-c");
       expect(pr?.description ?? "").not.toContain("<!-- ado-stack:start -->");
       expect(pr?.description ?? "").not.toContain("feat-a");
+
+      const all = await runCli(["submit", "--all"], { cwd: repo.dir, env });
+      expect(all.exitCode).toBe(0);
+      expect(fake.pullRequests.size).toBe(4);
+      for (const opened of fake.pullRequests.values()) {
+        expect(opened.description ?? "").not.toContain("<!-- ado-stack:start -->");
+      }
       await bare.cleanup();
     } finally {
       fake.stop();

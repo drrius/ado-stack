@@ -1,12 +1,13 @@
 import {
   assertDescriptionLimit,
   generateStackBlock,
+  humanDescription,
   upsertManagedSection,
 } from "../ado/description.ts";
 import { encodeStackProperties, propertyPatches } from "../ado/properties.ts";
 import type { AdoPullRequest } from "../ado/types.ts";
 import { CliError } from "../errors/cli-error.ts";
-import { stackOrder } from "../stack/graph.ts";
+import { isStandaloneBranch, stackOrder, stackScope } from "../stack/graph.ts";
 import { assertSafeRewrite } from "../stack/restack.ts";
 import type { StackState } from "../state/schema.ts";
 import { formatBranch, pullRequestWebUrl } from "../ui/format.ts";
@@ -18,13 +19,16 @@ export async function submitCommand(
   flags: Record<string, string | boolean>,
 ): Promise<void> {
   const state = await requireState(ctx);
-  const order = stackOrder(state);
+  const current = await ctx.git.currentBranch();
+  const order = submitOrder(state, { all: flags.all === true, current });
   if (order.length === 0) {
     throw new CliError("The stack is empty. Create a branch with `ado-stack create <name>`.");
   }
   await ctx.git.requireCleanTrackedTree("submit the stack");
   const ado = await createAdoClient(ctx, state);
-  ctx.log.info(`Submitting ${order.length}-PR stack...`);
+  ctx.log.info(
+    order.length === 1 ? "Submitting 1 pull request..." : `Submitting ${order.length}-PR stack...`,
+  );
   ctx.log.verbose(`fetch ${state.remoteName}`);
   await ctx.git.fetch(state.remoteName);
 
@@ -32,7 +36,6 @@ export async function submitCommand(
     state.stackId = crypto.randomUUID();
   }
 
-  const current = await ctx.git.currentBranch();
   const explicitTitle = typeof flags.title === "string" ? flags.title : undefined;
   const submitted: Array<{ branch: string; pr: AdoPullRequest }> = [];
 
@@ -123,13 +126,21 @@ export async function submitCommand(
       continue;
     }
     const full = await ado.getPullRequest(pr.pullRequestId);
-    const block = generateStackBlock(
-      items.map((item) => ({
-        ...item,
-        current: item.branch === branch,
-      })),
-    );
-    const description = upsertManagedSection(full.description ?? "", block);
+    const existing = full.description ?? "";
+    const tree = stackScope(state, branch);
+    const description = isStandaloneBranch(state, branch)
+      ? humanDescription(existing)
+      : upsertManagedSection(
+          existing,
+          generateStackBlock(
+            items
+              .filter((item) => item.branch !== undefined && tree.has(item.branch))
+              .map((item) => ({
+                ...item,
+                current: item.branch === branch,
+              })),
+          ),
+        );
     assertDescriptionLimit(description);
     if (description !== (full.description ?? "")) {
       await ado.updatePullRequest(pr.pullRequestId, { description });
@@ -148,11 +159,28 @@ export async function submitCommand(
   await ctx.stateStore.write(state);
   ctx.log.info("");
   ctx.log.info(
-    `Submitted ${submitted.length} pull requests in parent-before-child order: ${submitted
-      .map(({ pr }) => `#${pr.pullRequestId}`)
-      .join(", ")}`,
+    `Submitted ${submitted.length} ${
+      submitted.length === 1 ? "pull request" : "pull requests"
+    } in parent-before-child order: ${submitted.map(({ pr }) => `#${pr.pullRequestId}`).join(", ")}`,
   );
   logNext(ctx.log, "review and merge the bottom PR in Azure DevOps, then ado-stack restack");
+}
+
+function submitOrder(
+  state: StackState,
+  options: { all: boolean; current: string | undefined },
+): string[] {
+  const forest = stackOrder(state);
+  if (options.all) {
+    return forest;
+  }
+  if (options.current === undefined || !state.branches[options.current]) {
+    throw new CliError(
+      "Check out a tracked stack branch, or pass `--all` to submit every tracked stack.",
+    );
+  }
+  const scope = stackScope(state, options.current);
+  return forest.filter((branch) => scope.has(branch));
 }
 
 async function defaultTitle(options: {

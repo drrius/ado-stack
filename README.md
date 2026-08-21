@@ -59,7 +59,7 @@ ado-stack create api
 ado-stack submit
 ```
 
-`submit` pushes each branch and opens or updates PRs so `schema` targets `main` and `api` targets `schema`.
+`submit` pushes the current stack and opens or updates PRs so `schema` targets `main` and `api` targets `schema`. Other independent branches that share `main` are left alone.
 
 ## Interactive UI
 
@@ -136,7 +136,7 @@ If `schema` squash-merges into `main`, run `ado-stack restack`. The tool rebases
 | --- | --- |
 | `ado-stack init` | Detect the Azure Repos remote and write `.git/ado-stack/state.json`. Rebuilds from PR targets and metadata when parentage agrees. |
 | `ado-stack create <name>` | Create a stack branch from `HEAD`. If `HEAD` already has children, the new branch is a sibling. Honors `branchPrefix`. |
-| `ado-stack submit` | Push branches in parent-before-child order and create or update PRs. Writes namespaced PR properties and a managed description block. |
+| `ado-stack submit` | Push the current stack (the tree containing HEAD) and create or update its PRs. Other roots that share trunk are left alone. `--all` submits every tracked stack. Writes namespaced PR properties and a managed description block on real stacks, not on standalone branches. |
 | `ado-stack status` | Show the stack forest, one line per branch. `--json` prints the same model. `--web` writes `.git/ado-stack/status.html`, runs a restack conflict preflight, and opens the file. See [Status views](#status-views). |
 | `ado-stack restack` | Rebase each layer onto its live parent, depth-first from each root. `--stack <branch>` limits the run to the tree containing that branch, leaving other roots alone. `--continue` / `--abort` after conflicts. `--json` streams NDJSON events (plan, step-start, step-done, conflict with worktree path and files, done, aborted, error) for tooling; human messages move to stderr. `--status [--json]` reads the persisted plan and live rebase state without changing anything. |
 | `ado-stack up` / `down` | Move to a child or the parent. `up` from a fork requires the child name. |

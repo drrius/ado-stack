@@ -58,6 +58,8 @@ Each tracked branch stores:
 
 ## Remote metadata
 
+`submit` defaults to the tree that contains the current branch (`stackScope` in `src/stack/graph.ts`), the same set `restack --stack` uses. `--all` walks the whole forest. Each PR description block lists only that tree. A standalone root with no children gets no managed block.
+
 On submit, each PR gets properties:
 
 - `ado-stack.version`

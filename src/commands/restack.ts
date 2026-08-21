@@ -1,7 +1,7 @@
 import { CliError } from "../errors/cli-error.ts";
 import { GitRepo } from "../git/git.ts";
 import { sameWorktreePath } from "../git/worktree.ts";
-import { descendantsOf, stackOrder } from "../stack/graph.ts";
+import { descendantsOf, stackOrder, stackScope } from "../stack/graph.ts";
 import { resolveBranchArg } from "../stack/names.ts";
 import {
   type PullRequestSnapshot,
@@ -231,32 +231,6 @@ async function runRestackCommand(
   );
   await ctx.stateStore.writeRestackPlan(plan);
   await restoreCheckoutAfter(ctx.git, () => runPlan(ctx, reconciled, plan, reporter));
-}
-
-/**
- * The tree containing `branch`: walk up to the root whose parent is trunk
- * (or leaves the tracked set), then include the root and every descendant.
- */
-function stackScope(state: StackState, branch: string): Set<string> {
-  if (!state.branches[branch]) {
-    throw new CliError(
-      `\`${branch}\` is not tracked.\n\nRun \`ado-stack status\` to see tracked branches.`,
-    );
-  }
-  let root = branch;
-  const seen = new Set<string>();
-  while (true) {
-    if (seen.has(root)) {
-      throw new CliError(`Stack contains a cycle at \`${root}\`.`);
-    }
-    seen.add(root);
-    const parent = state.branches[root]?.parent;
-    if (!parent || parent === state.defaultBranch || !state.branches[parent]) {
-      break;
-    }
-    root = parent;
-  }
-  return new Set([root, ...descendantsOf(state, root)]);
 }
 
 async function continueRestack(ctx: AppContext, reporter: RestackReporter): Promise<void> {

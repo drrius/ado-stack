@@ -17,7 +17,7 @@ import { previewRestack, restackCommand } from "../commands/restack.ts";
 import { type NextStep, type StackStatus, loadStackStatus } from "../commands/status.ts";
 import { submitCommand } from "../commands/submit.ts";
 import { formatError } from "../errors/cli-error.ts";
-import { stackOrder } from "../stack/graph.ts";
+import { stackOrder, stackScope } from "../stack/graph.ts";
 import { applyBranchPrefix, validateBranchName } from "../stack/names.ts";
 import { RestackConflictError, branchWasSubmitted } from "../stack/restack.ts";
 import { restackRebaseGit } from "../stack/worktrees.ts";
@@ -508,7 +508,14 @@ function validateNameInput(value: string | undefined, prefix: string): string | 
 async function flowSubmit(session: Session): Promise<void> {
   const { ctx, io } = session;
   const state = await requireState(ctx);
-  const order = stackOrder(state);
+  const current = await ctx.git.currentBranch();
+  if (current === undefined || !state.branches[current]) {
+    log.info("Check out a tracked stack branch, or run `ado-stack submit --all` from the CLI.", {
+      ...io,
+    });
+    return;
+  }
+  const order = stackOrder(state).filter((branch) => stackScope(state, current).has(branch));
   if (order.length === 0) {
     log.info("The stack is empty. Create a branch first.", { ...io });
     return;
@@ -541,10 +548,12 @@ async function flowSubmit(session: Session): Promise<void> {
   if (!after) {
     return;
   }
-  const urls = stackOrder(after).flatMap((branch) => {
-    const id = after.branches[branch]?.pullRequestId;
-    return id === undefined ? [] : [`#${id}  ${pullRequestWebUrl(after, id)}`];
-  });
+  const urls = stackOrder(after)
+    .filter((branch) => stackScope(after, current).has(branch))
+    .flatMap((branch) => {
+      const id = after.branches[branch]?.pullRequestId;
+      return id === undefined ? [] : [`#${id}  ${pullRequestWebUrl(after, id)}`];
+    });
   if (urls.length > 0) {
     note(urls.join("\n"), "Pull requests", { ...io });
   }
