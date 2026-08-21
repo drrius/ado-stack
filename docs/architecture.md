@@ -22,7 +22,7 @@ CLI commands
 
 ## Git layer
 
-`src/git/git.ts` runs `git` with an argument array. Stdout and stderr are captured separately. Failures become `GitError` with the human-readable command.
+`src/git/git.ts` runs `git` with an argument array. Stdout and stderr are captured separately. Failures become `GitError` with the human-readable command and both streams, so hook output is not dropped when git also writes a one-line stderr summary.
 
 History rewrites that must update a published branch call `forcePushWithLease`. There is no `--force` helper.
 

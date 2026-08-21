@@ -14,8 +14,7 @@ export class GitError extends CliError {
     stderr: string;
     stdout: string;
   }) {
-    const detail =
-      options.stderr.trim() || options.stdout.trim() || `git exited ${options.exitCode}`;
+    const detail = gitFailureDetail(options.stdout, options.stderr, options.exitCode);
     super(humanGitMessage(options.args, detail), {
       exitCode: options.exitCode === 0 ? 1 : options.exitCode,
       cause: new Error(detail),
@@ -25,6 +24,11 @@ export class GitError extends CliError {
     this.stderr = options.stderr;
     this.stdout = options.stdout;
   }
+}
+
+function gitFailureDetail(stdout: string, stderr: string, exitCode: number): string {
+  const parts = [stdout.trim(), stderr.trim()].filter((part) => part.length > 0);
+  return parts.length > 0 ? parts.join("\n\n") : `git exited ${exitCode}`;
 }
 
 function humanGitMessage(args: readonly string[], detail: string): string {
